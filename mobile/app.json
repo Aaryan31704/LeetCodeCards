@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "LeetPlacards",
+    "slug": "leetplacards",
+    "scheme": "leetplacards",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.leetplacards.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.leetplacards.app"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8000"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+# Environment secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+
+# Node / Expo
+node_modules/
+mobile/node_modules/
+.expo/
+mobile/.expo/
+
+# OS
+.DS_Store
+Thumbs.db
