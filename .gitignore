@@ -15,3 +15,7 @@ mobile/.expo/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build artifacts
+*.apk
+*.aab

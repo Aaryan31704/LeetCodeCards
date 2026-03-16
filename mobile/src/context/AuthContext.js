@@ -91,7 +91,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async () => {
     const redirectUrl = Linking.createURL('auth/callback');
-    const authUrl = `${API_BASE_URL}/auth/github`;
+    const authUrl = `${API_BASE_URL}/auth/github?app_redirect=${encodeURIComponent(redirectUrl)}`;
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
     if (result.type === 'success' && result.url) {
       const parsed = Linking.parse(result.url);
