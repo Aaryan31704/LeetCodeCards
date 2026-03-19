@@ -1,4 +1,16 @@
-// For physical device: use your computer's LAN IP (both phone and PC must be on the same Wi-Fi)
-// For Android emulator use http://10.0.2.2:8000
-// For iOS simulator use http://localhost:8000
-export const API_BASE_URL = 'http://192.168.1.100:8000';
+import Constants from 'expo-constants';
+
+function normalizeBaseUrl(url) {
+  return url.replace(/\/+$/, '');
+}
+
+const envApiUrl = process.env.EXPO_PUBLIC_API_URL;
+const appConfigApiUrl = Constants.expoConfig?.extra?.apiUrl;
+
+// Priority:
+// 1) EXPO_PUBLIC_API_URL (recommended for preview/production builds)
+// 2) app.json extra.apiUrl (useful for local development defaults)
+// 3) localhost fallback
+const selectedApiUrl = envApiUrl || appConfigApiUrl || 'http://localhost:8000';
+
+export const API_BASE_URL = normalizeBaseUrl(selectedApiUrl);
