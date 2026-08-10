@@ -2,21 +2,20 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Modal,
-  Pressable,
-  Platform,
+  TouchableOpacity,
 } from 'react-native';
-import { fetchPlacardById } from '../api';
+import { fetchPlacardById, toggleMastered } from '../api';
+import FlipCard from '../components/FlipCard';
+import CodeModal from '../components/CodeModal';
+import { C, fonts } from '../theme';
+import * as Haptics from 'expo-haptics';
 
-export default function PlacardViewScreen({ route }) {
+export default function PlacardViewScreen({ route, navigation }) {
   const { placardId } = route.params;
   const [placard, setPlacard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [flipped, setFlipped] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
 
   useEffect(() => {
@@ -24,20 +23,38 @@ export default function PlacardViewScreen({ route }) {
     (async () => {
       try {
         const data = await fetchPlacardById(placardId);
-        if (!cancelled) setPlacard(data);
+        if (!cancelled) {
+          setPlacard(data);
+          navigation.setOptions({ title: data.problem_name || 'Placard' });
+        }
       } catch (_) {
         if (!cancelled) setPlacard(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [placardId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [placardId, navigation]);
+
+  const handleMastered = async () => {
+    if (!placard) return;
+    try {
+      const res = await toggleMastered(placard.id);
+      Haptics.notificationAsync(
+        res.mastered
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Warning
+      ).catch(() => {});
+      setPlacard((p) => ({ ...p, mastered: res.mastered }));
+    } catch (_) {}
+  };
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#38bdf8" />
+        <ActivityIndicator size="large" color={C.primary} />
       </View>
     );
   }
@@ -52,69 +69,27 @@ export default function PlacardViewScreen({ route }) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.card}
-        activeOpacity={1}
-        onPress={() => setFlipped((f) => !f)}
-      >
-        {!flipped ? (
-          <>
-            <Text style={styles.frontTitle}>{placard.problem_name}</Text>
-            <View style={styles.patternBadge}>
-              <Text style={styles.patternText}>{placard.pattern || '—'}</Text>
-            </View>
-            <Text style={styles.tapHint}>Tap to flip</Text>
-          </>
-        ) : (
-          <ScrollView
-            style={styles.backScroll}
-            contentContainerStyle={styles.backContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.backLabel}>Summary</Text>
-            <Text style={styles.backText}>{placard.summary || '—'}</Text>
-            <Text style={styles.backLabel}>Approach</Text>
-            <Text style={styles.backText}>{placard.approach || '—'}</Text>
-            <Text style={styles.backLabel}>Time</Text>
-            <Text style={styles.backText}>{placard.time_complexity || '—'}</Text>
-            <Text style={styles.backLabel}>Space</Text>
-            <Text style={styles.backText}>{placard.space_complexity || '—'}</Text>
-            <Text style={styles.tapHint}>Tap to flip back</Text>
-          </ScrollView>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.viewCodeBtn}
-        onPress={() => setCodeVisible(true)}
-      >
-        <Text style={styles.viewCodeBtnText}>View Code</Text>
-      </TouchableOpacity>
-
-      <Modal
+      <CodeModal
         visible={codeVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setCodeVisible(false)}
+        code={placard.code}
+        onClose={() => setCodeVisible(false)}
+      />
+      <View style={styles.deck}>
+        <FlipCard
+          card={placard}
+          onShowCode={() => setCodeVisible(true)}
+          compact
+        />
+      </View>
+      <TouchableOpacity
+        style={[styles.masteredBtn, placard.mastered && styles.masteredBtnOn]}
+        onPress={handleMastered}
+        activeOpacity={0.8}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setCodeVisible(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Code</Text>
-              <TouchableOpacity onPress={() => setCodeVisible(false)}>
-                <Text style={styles.modalClose}>Close</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.codeScroll}
-              contentContainerStyle={styles.codeContent}
-              showsVerticalScrollIndicator
-            >
-              <Text style={styles.codeText}>{placard.code || 'No code stored.'}</Text>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <Text style={[styles.masteredLabel, placard.mastered && styles.masteredLabelOn]}>
+          {placard.mastered ? '✓ Mastered' : 'Mark Mastered'}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -122,101 +97,28 @@ export default function PlacardViewScreen({ route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: C.bg,
     padding: 16,
+    paddingBottom: 28,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: C.bg,
   },
-  card: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 24,
-    justifyContent: 'center',
-    minHeight: 280,
-  },
-  frontTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#f1f5f9',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  patternBadge: {
-    alignSelf: 'center',
-    backgroundColor: '#334155',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  patternText: {
-    fontSize: 15,
-    color: '#94a3b8',
-  },
-  tapHint: {
-    marginTop: 24,
-    fontSize: 13,
-    color: '#64748b',
-    textAlign: 'center',
-  },
-  backScroll: { flex: 1 },
-  backContent: { paddingBottom: 24 },
-  backLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    marginTop: 16,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  backText: {
-    fontSize: 15,
-    color: '#e2e8f0',
-    lineHeight: 22,
-  },
-  errorText: { color: '#f87171', fontSize: 16 },
-  viewCodeBtn: {
-    marginTop: 16,
-    backgroundColor: '#334155',
+  deck: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { color: C.danger, fontSize: 16, fontFamily: fonts.semiBold },
+  masteredBtn: {
+    backgroundColor: C.white,
+    borderWidth: 1.5,
+    borderColor: C.border,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    marginTop: 8,
   },
-  viewCodeBtnText: {
-    color: '#e2e8f0',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#0f172a',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  modalTitle: { color: '#f1f5f9', fontWeight: '600', fontSize: 18 },
-  modalClose: { color: '#38bdf8', fontSize: 16 },
-  codeScroll: { maxHeight: 400 },
-  codeContent: { padding: 16 },
-  codeText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 13,
-    color: '#94a3b8',
-  },
+  masteredBtnOn: { backgroundColor: C.successBg, borderColor: C.success },
+  masteredLabel: { color: C.mid, fontFamily: fonts.semiBold, fontSize: 15 },
+  masteredLabelOn: { color: C.success },
 });

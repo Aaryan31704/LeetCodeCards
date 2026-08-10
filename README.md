@@ -101,7 +101,7 @@ python smoke_test.py
 
 Checks auth enforcement, OAuth redirect validation, webhook signature and branch handling, and the parsing helpers. No database required.
 
-**Webhook (local dev):** For GitHub to reach your backend on push, use a public URL (e.g. ngrok for local: `ngrok http 8000`, then set `APP_URL` to the ngrok URL). The backend creates the repo webhook itself with `GITHUB_WEBHOOK_SECRET` applied, so no manual webhook setup is needed.
+**Webhook (local dev):** Prefer the hosted Render backend for webhooks. If you run the API locally and still want push events, expose it with ngrok (`ngrok http 8000`) and set `APP_URL` to that URL. The backend creates the repo webhook itself with `GITHUB_WEBHOOK_SECRET` applied.
 
 ---
 

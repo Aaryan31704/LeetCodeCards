@@ -1,41 +1,42 @@
-﻿{
-    "expo":  {
-                 "name":  "LeetPlacards",
-                 "slug":  "leetplacards",
-                 "scheme":  "leetplacards",
-                 "version":  "1.0.0",
-                 "sdkVersion":  "54.0.0",
-                 "orientation":  "portrait",
-                 "icon":  "./assets/icon.png",
-                 "userInterfaceStyle":  "automatic",
-                 "splash":  {
-                                "image":  "./assets/splash-icon.png",
-                                "resizeMode":  "contain",
-                                "backgroundColor":  "#0f172a"
-                            },
-                 "assetBundlePatterns":  [
-                                             "**/*"
-                                         ],
-                 "ios":  {
-                             "supportsTablet":  true,
-                             "bundleIdentifier":  "com.leetplacards.app"
-                         },
-                 "android":  {
-                                 "adaptiveIcon":  {
-                                                      "foregroundImage":  "./assets/adaptive-icon.png",
-                                                      "backgroundColor":  "#0f172a"
-                                                  },
-                                 "package":  "com.leetplacards.app"
-                             },
-                 "extra":  {
-                               "apiUrl":  "https://leetplacards-api.onrender.com",
-                               "eas":  {
-                                           "projectId":  "5154524a-d7bb-4b64-8e3d-91d700c4432c"
-                                       }
-                           },
-                 "plugins":  [
-                                 "expo-web-browser"
-                             ],
-                 "owner":  "aaryan_shreyas"
-             }
+{
+  "expo": {
+    "name": "LeetPlacards",
+    "slug": "leetplacards",
+    "scheme": "leetplacards",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f1f5f9"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.leetplacards.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f1f5f9"
+      },
+      "package": "com.leetplacards.app"
+    },
+    "extra": {
+      "apiUrl": "https://leetplacards-api.onrender.com",
+      "eas": {
+        "projectId": "5154524a-d7bb-4b64-8e3d-91d700c4432c"
+      }
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-font"
+    ],
+    "owner": "aaryan_shreyas"
+  }
 }

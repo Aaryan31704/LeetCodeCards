@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { connectRepo, setAuthToken } from '../api';
+import { C, fonts } from '../theme';
 
 export default function ConnectRepoScreen({ navigation }) {
   const { token, user, refreshUser } = useAuth();
@@ -39,8 +40,6 @@ export default function ConnectRepoScreen({ navigation }) {
     setSubmitting(true);
     try {
       const result = await connectRepo(o, r, prefix.trim() || 'LeetCode');
-      // Once the user has a repo, MainStack drops this screen and lands on the
-      // deck automatically, so navigating here would target an unmounted route.
       const updated = await refreshUser();
       if (!updated?.repo_owner) {
         setError('Repo saved but the app could not refresh. Pull to refresh or restart the app.');
@@ -48,13 +47,10 @@ export default function ConnectRepoScreen({ navigation }) {
         return;
       }
       if (result && result.webhook_created === false) {
-        // Alert rather than local state: this screen unmounts as soon as the
-        // refreshed user has a repo.
         Alert.alert(
           'Connected, but no webhook',
           'Your repo is connected and syncing now, but GitHub could not be given a ' +
-            'webhook, so new pushes will not sync automatically. Use pull-to-refresh, ' +
-            'or set APP_URL to a public backend URL.'
+            'webhook, so new pushes will not sync automatically. Use pull-to-refresh.'
         );
       }
     } catch (e) {
@@ -72,9 +68,9 @@ export default function ConnectRepoScreen({ navigation }) {
         <Text style={styles.hint}>Placards sync when you push. Pull to refresh the list.</Text>
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('PlacardList')}
+          onPress={() => navigation.navigate('FlashcardDeck')}
         >
-          <Text style={styles.buttonText}>View placards</Text>
+          <Text style={styles.buttonText}>Open deck</Text>
         </TouchableOpacity>
       </View>
     );
@@ -91,31 +87,37 @@ export default function ConnectRepoScreen({ navigation }) {
       >
         <Text style={styles.title}>Connect your LeetCode repo</Text>
         <Text style={styles.hint}>
-          Repository where you push LeetCode solutions (e.g. with LeetHub). We’ll create a webhook
-          so new pushes create placards automatically.
+          Repository where you push solutions (e.g. with LeetHub). We’ll create a webhook so new
+          pushes become placards automatically.
         </Text>
         <TextInput
           style={styles.input}
           placeholder="Owner (e.g. your-username)"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={C.light}
           value={owner}
-          onChangeText={(t) => { setOwner(t); setError(null); }}
+          onChangeText={(t) => {
+            setOwner(t);
+            setError(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
         />
         <TextInput
           style={styles.input}
           placeholder="Repo name (e.g. leetcode-problems)"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={C.light}
           value={repo}
-          onChangeText={(t) => { setRepo(t); setError(null); }}
+          onChangeText={(t) => {
+            setRepo(t);
+            setError(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
         />
         <TextInput
           style={styles.input}
           placeholder="Path prefix (default: LeetCode)"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={C.light}
           value={prefix}
           onChangeText={setPrefix}
           autoCapitalize="none"
@@ -127,7 +129,7 @@ export default function ConnectRepoScreen({ navigation }) {
           disabled={submitting}
         >
           {submitting ? (
-            <ActivityIndicator color="#0f172a" />
+            <ActivityIndicator color={C.white} />
           ) : (
             <Text style={styles.buttonText}>Connect repo & sync</Text>
           )}
@@ -138,41 +140,54 @@ export default function ConnectRepoScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
+  container: { flex: 1, backgroundColor: C.bg },
   scrollContent: { padding: 24, paddingBottom: 48 },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#f1f5f9',
+    fontSize: 24,
+    fontFamily: fonts.bold,
+    color: C.dark,
     marginBottom: 12,
   },
   hint: {
-    color: '#94a3b8',
+    color: C.mid,
     fontSize: 15,
     marginBottom: 24,
     lineHeight: 22,
+    fontFamily: fonts.regular,
   },
   connected: {
     fontSize: 17,
-    color: '#38bdf8',
+    color: C.primary,
     marginBottom: 8,
+    marginTop: 40,
+    marginHorizontal: 24,
+    fontFamily: fonts.semiBold,
   },
   input: {
-    backgroundColor: '#1e293b',
+    backgroundColor: C.white,
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#f1f5f9',
+    color: C.dark,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    fontFamily: fonts.regular,
   },
-  errorText: { color: '#f87171', marginBottom: 12, fontSize: 14 },
+  errorText: {
+    color: C.danger,
+    marginBottom: 12,
+    fontSize: 14,
+    fontFamily: fonts.medium,
+  },
   button: {
-    backgroundColor: '#38bdf8',
+    backgroundColor: C.primary,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
+    marginHorizontal: 24,
   },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#0f172a', fontSize: 17, fontWeight: '600' },
+  buttonText: { color: C.white, fontSize: 17, fontFamily: fonts.semiBold },
 });

@@ -6,8 +6,10 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../config';
+import { C, fonts } from '../theme';
 
 const ERROR_MESSAGES = {
   token_exchange_failed: 'GitHub rejected the login. Check the OAuth client ID and secret.',
@@ -34,27 +36,26 @@ export default function LoginScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#38bdf8" />
+        <ActivityIndicator size="large" color={C.primary} />
         <Text style={styles.hint}>Loading…</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>LeetPlacards</Text>
-      <Text style={styles.subtitle}>
-        Turn your LeetCode solutions into flashcards. Log in with GitHub and connect your repo—new
-        solutions will become cards automatically when you push.
+    <LinearGradient colors={[C.bgSoft, C.bg, '#dde7f5']} style={styles.container}>
+      <Text style={styles.brand}>LeetPlacards</Text>
+      <Text style={styles.tagline}>
+        Your LeetCode solutions, turned into flashcards for revision.
       </Text>
       <TouchableOpacity
         style={[styles.button, busy && styles.buttonDisabled]}
         onPress={handleLogin}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         disabled={busy}
       >
         {busy ? (
-          <ActivityIndicator color="#0f172a" />
+          <ActivityIndicator color={C.white} />
         ) : (
           <Text style={styles.buttonText}>Login with GitHub</Text>
         )}
@@ -66,18 +67,16 @@ export default function LoginScreen() {
         </>
       ) : null}
       <Text style={styles.hint}>
-        You’ll be redirected to GitHub to authorize. After connecting your repo, every push will create
-        or update placards.
+        Authorize once, connect your repo, and every push becomes a card.
       </Text>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
-    padding: 24,
+    padding: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -85,47 +84,59 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: C.bg,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#f1f5f9',
-    marginBottom: 12,
+  brand: {
+    fontSize: 36,
+    fontFamily: fonts.bold,
+    color: C.dark,
+    marginBottom: 14,
     textAlign: 'center',
+    letterSpacing: -0.8,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#94a3b8',
+  tagline: {
+    fontSize: 17,
+    fontFamily: fonts.regular,
+    color: C.mid,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 16,
+    lineHeight: 26,
+    marginBottom: 36,
+    paddingHorizontal: 12,
   },
   button: {
-    backgroundColor: '#38bdf8',
+    backgroundColor: C.primary,
     paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    marginBottom: 24,
+    paddingHorizontal: 36,
+    borderRadius: 14,
+    marginBottom: 20,
+    minWidth: 240,
+    alignItems: 'center',
+    shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 4,
   },
   buttonDisabled: { opacity: 0.7 },
   buttonText: {
-    color: '#0f172a',
+    color: C.white,
     fontSize: 17,
-    fontWeight: '600',
+    fontFamily: fonts.semiBold,
   },
   errorText: {
-    color: '#f87171',
+    color: C.danger,
     fontSize: 15,
     textAlign: 'center',
     marginBottom: 8,
     paddingHorizontal: 16,
+    fontFamily: fonts.medium,
   },
   hint: {
-    color: '#64748b',
+    color: C.light,
     fontSize: 14,
     textAlign: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    lineHeight: 21,
+    fontFamily: fonts.regular,
   },
 });
