@@ -42,11 +42,12 @@ async def github_webhook(request: Request):
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    if data.get("ref") != "refs/heads/main" and data.get("ref") != "refs/heads/master":
-        # Only default branch; could support others
+    repo = data.get("repository") or {}
+    # Use the repo's own default branch rather than assuming main/master.
+    default_branch = repo.get("default_branch") or "main"
+    if data.get("ref") != f"refs/heads/{default_branch}":
         return Response(status_code=200, content=b"ok")
 
-    repo = data.get("repository") or {}
     full_name = repo.get("full_name") or ""
     if "/" not in full_name:
         return Response(status_code=200, content=b"ok")

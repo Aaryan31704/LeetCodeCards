@@ -10,14 +10,17 @@ from app.config import get_settings
 GITHUB_API_BASE = "https://api.github.com"
 logger = logging.getLogger(__name__)
 
+# Bound history walking so a missing/rewritten since_sha cannot page through an entire repo.
+MAX_COMMIT_PAGES = 20
+
 
 def _headers(token: Optional[str] = None) -> dict:
     settings = get_settings()
     t = token or settings.GITHUB_TOKEN
-    return {
-        "Accept": "application/vnd.github.v3+json",
-        "Authorization": f"Bearer {t}" if t else None,
-    }
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if t:
+        headers["Authorization"] = f"Bearer {t}"
+    return headers
 
 
 def _is_leetcode_file(path: str, path_prefix: Optional[str] = None) -> bool:
@@ -69,11 +72,15 @@ async def get_commits_since(
     result = []
     async with _client() as client:
         page = 1
-        while True:
+        while page <= MAX_COMMIT_PAGES:
             r = await client.get(
                 url, params={**params, "page": page}, headers=_headers(token)
             )
             if r.status_code != 200:
+                logger.warning(
+                    "Failed to list commits for %s/%s: %s %s",
+                    owner, repo, r.status_code, r.text[:200],
+                )
                 break
             commits = r.json()
             if not commits:
@@ -155,24 +162,49 @@ async def get_new_leetcode_files_since(
 async def create_webhook_for_repo(
     repo_owner: str, repo_name: str, access_token: str
 ) -> bool:
-    """Create a push webhook for the repo. Returns True if created."""
+    """Ensure a push webhook pointing at this backend exists for the repo.
+
+    Idempotent: reconnecting the same repo updates the existing hook instead of
+    failing with a duplicate-hook error from GitHub.
+    """
     settings = get_settings()
     webhook_url = f"{settings.APP_URL.rstrip('/')}/webhooks/github"
-    secret = settings.GITHUB_WEBHOOK_SECRET or ""
-    url = f"{GITHUB_API_BASE}/repos/{repo_owner}/{repo_name}/hooks"
-    payload = {
-        "name": "web",
-        "active": True,
-        "events": ["push"],
-        "config": {
-            "url": webhook_url,
-            "content_type": "json",
-            "secret": secret,
-        },
-    }
+
+    if settings.APP_URL.startswith(("http://localhost", "http://127.0.0.1")):
+        logger.warning(
+            "APP_URL is %s, which GitHub cannot reach. Skipping webhook creation; "
+            "use a public URL (e.g. ngrok) to enable push-triggered syncing.",
+            settings.APP_URL,
+        )
+        return False
+
+    config = {"url": webhook_url, "content_type": "json"}
+    if settings.GITHUB_WEBHOOK_SECRET:
+        config["secret"] = settings.GITHUB_WEBHOOK_SECRET
+
+    hooks_url = f"{GITHUB_API_BASE}/repos/{repo_owner}/{repo_name}/hooks"
+    payload = {"name": "web", "active": True, "events": ["push"], "config": config}
+    headers = _headers(access_token)
+
     async with _client() as client:
-        r = await client.post(url, json=payload, headers=_headers(access_token))
+        existing = await client.get(hooks_url, headers=headers)
+        if existing.status_code == 200:
+            for hook in existing.json():
+                if (hook.get("config") or {}).get("url") == webhook_url:
+                    patch = await client.patch(
+                        f"{hooks_url}/{hook.get('id')}", json=payload, headers=headers
+                    )
+                    if patch.status_code == 200:
+                        logger.info("Updated existing webhook for %s/%s", repo_owner, repo_name)
+                        return True
+                    logger.warning(
+                        "Failed to update webhook: %s %s", patch.status_code, patch.text[:300]
+                    )
+                    return False
+
+        r = await client.post(hooks_url, json=payload, headers=headers)
         if r.status_code in (200, 201):
+            logger.info("Created webhook for %s/%s", repo_owner, repo_name)
             return True
-        logger.warning("Failed to create webhook: %s %s", r.status_code, r.text)
+        logger.warning("Failed to create webhook: %s %s", r.status_code, r.text[:300])
         return False

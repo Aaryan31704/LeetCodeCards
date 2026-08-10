@@ -92,13 +92,25 @@ export function AuthProvider({ children }) {
   const login = useCallback(async () => {
     const redirectUrl = Linking.createURL('auth/callback');
     const authUrl = `${API_BASE_URL}/auth/github?app_redirect=${encodeURIComponent(redirectUrl)}`;
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-    if (result.type === 'success' && result.url) {
-      const parsed = Linking.parse(result.url);
-      const t = parsed.queryParams?.token;
-      if (t) {
-        await setToken(t);
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+      if (result.type === 'success' && result.url) {
+        const parsed = Linking.parse(result.url);
+        if (parsed.queryParams?.error) {
+          return { ok: false, error: String(parsed.queryParams.error) };
+        }
+        const t = parsed.queryParams?.token;
+        if (t) {
+          await setToken(t);
+          return { ok: true };
+        }
       }
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        return { ok: false, cancelled: true };
+      }
+      return { ok: false, error: 'Login did not complete. Please try again.' };
+    } catch (e) {
+      return { ok: false, error: e?.message || 'Could not reach the backend.' };
     }
   }, [setToken]);
 
@@ -106,14 +118,21 @@ export function AuthProvider({ children }) {
     await setToken(null);
   }, [setToken]);
 
+  // Returns the refreshed user, or null when the request failed, so callers can
+  // react instead of silently assuming the update landed.
   const refreshUser = useCallback(async () => {
-    if (!token) return;
+    if (!token) return null;
     try {
       const res = await fetch(`${API_BASE_URL}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) setUser(await res.json());
-    } catch (_) {}
+      if (!res.ok) return null;
+      const data = await res.json();
+      setUser(data);
+      return data;
+    } catch (_) {
+      return null;
+    }
   }, [token]);
 
   const value = {

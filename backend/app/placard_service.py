@@ -9,6 +9,7 @@ Supports:
 import asyncio
 import json
 import logging
+import time
 from typing import Optional
 from uuid import UUID
 
@@ -26,6 +27,22 @@ logger = logging.getLogger(__name__)
 
 DELAY_BETWEEN_CARDS = 2
 
+# A "running" resync older than this is assumed dead (e.g. the server restarted
+# mid-run), so it must not block the user from starting a new one.
+STALE_PROGRESS_SECONDS = 600
+
+# asyncio only holds weak references to tasks, so a fire-and-forget task can be
+# garbage collected mid-run. Keep strong references until each task finishes.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def spawn_background(coro) -> asyncio.Task:
+    """Schedule a background coroutine and keep it alive until completion."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 
 def _last_commit_key(user_id: UUID) -> str:
     return f"last_commit:{user_id}"
@@ -38,6 +55,9 @@ def _resync_key(user_id: UUID) -> str:
 # ── Progress helpers ──
 
 async def _set_progress(user_id: UUID, data: dict) -> None:
+    # Stamp every write so a resync interrupted by a restart can be detected as
+    # stale instead of blocking future resyncs forever.
+    data = {**data, "updated_at": time.time()}
     async with get_conn() as conn:
         await conn.execute(
             """
@@ -47,6 +67,16 @@ async def _set_progress(user_id: UUID, data: dict) -> None:
             _resync_key(user_id),
             json.dumps(data),
         )
+
+
+def is_resync_running(progress: Optional[dict]) -> bool:
+    """True only for a resync that is running and still reporting progress."""
+    if not progress or progress.get("status") != "running":
+        return False
+    updated_at = progress.get("updated_at")
+    if not isinstance(updated_at, (int, float)):
+        return False
+    return (time.time() - updated_at) < STALE_PROGRESS_SECONDS
 
 
 async def get_resync_progress(user_id: UUID) -> Optional[dict]:
@@ -120,8 +150,7 @@ async def upsert_placard(
                 approach = EXCLUDED.approach,
                 time_complexity = EXCLUDED.time_complexity,
                 space_complexity = EXCLUDED.space_complexity,
-                code = EXCLUDED.code,
-                created_at = NOW()
+                code = EXCLUDED.code
             RETURNING id
             """,
             user_id, problem_name, github_file_path,
@@ -203,20 +232,31 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
             await set_last_processed_commit(user_id, latest)
         return 0
 
-    logger.info("User %s: %d new file(s) to process", user_id, len(files_with_content))
+    total = len(files_with_content)
+    logger.info("User %s: %d new file(s) to process", user_id, total)
     count = 0
-    for path, code in files_with_content:
+    failed = 0
+    for index, (path, code) in enumerate(files_with_content):
         try:
             await _process_one(user_id, path, code)
             count += 1
         except Exception as e:
+            failed += 1
             logger.warning("Failed to process %s: %s", path, e)
-        if count < len(files_with_content):
+        if index < total - 1:
             await asyncio.sleep(DELAY_BETWEEN_CARDS)
 
-    latest = await get_latest_commit_sha(owner, repo, token)
-    if latest:
-        await set_last_processed_commit(user_id, latest)
+    # Only advance the pointer when everything succeeded, otherwise failed files
+    # would be skipped forever on subsequent syncs.
+    if failed:
+        logger.warning(
+            "User %s: %d/%d file(s) failed; keeping commit pointer so they retry next sync",
+            user_id, failed, total,
+        )
+    else:
+        latest = await get_latest_commit_sha(owner, repo, token)
+        if latest:
+            await set_last_processed_commit(user_id, latest)
     return count
 
 
@@ -350,6 +390,7 @@ async def full_resync_background(user_id: UUID) -> None:
         await _set_progress(user_id, {"status": "running", "total": total, "completed": 0, "current": ""})
 
         completed = 0
+        failed = 0
         for path, code in files_with_content:
             name = _extract_problem_name_from_path(path)
             await _set_progress(user_id, {
@@ -359,15 +400,22 @@ async def full_resync_background(user_id: UUID) -> None:
             try:
                 await _process_one(user_id, path, code)
             except Exception as e:
+                failed += 1
                 logger.warning("Full resync failed for %s: %s", path, e)
 
             completed += 1
             if completed < total:
                 await asyncio.sleep(DELAY_BETWEEN_CARDS)
 
-        latest = await get_latest_commit_sha(owner, repo, token)
-        if latest:
-            await set_last_processed_commit(user_id, latest)
+        if failed:
+            logger.warning(
+                "Full resync for user %s: %d/%d file(s) failed; commit pointer not advanced",
+                user_id, failed, total,
+            )
+        else:
+            latest = await get_latest_commit_sha(owner, repo, token)
+            if latest:
+                await set_last_processed_commit(user_id, latest)
 
         await _set_progress(user_id, {"status": "done", "total": total, "completed": completed, "current": ""})
         logger.info("Full resync complete for user %s: %d/%d", user_id, completed, total)

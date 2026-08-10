@@ -16,13 +16,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://dione-arrestive-shaina.ngrok-free.dev"
+        "EXPO_PUBLIC_API_URL": "https://leetplacards-api.onrender.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://dione-arrestive-shaina.ngrok-free.dev"
+        "EXPO_PUBLIC_API_URL": "https://leetplacards-api.onrender.com"
       }
     }
   }

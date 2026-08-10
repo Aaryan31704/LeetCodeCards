@@ -8,6 +8,8 @@ mobile/.env
 __pycache__/
 *.pyc
 backend/venv/
+backend/.venv/
+.venv/
 
 # Node / Expo
 node_modules/

@@ -1,0 +1,43 @@
+# Render Blueprint: deploys the FastAPI backend from this repo.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# One-time setup on https://render.com after connecting your GitHub account:
+#   New + -> Blueprint -> select this repo -> Apply.
+# Render prompts for every env var marked "sync: false" (paste from backend/.env).
+#
+# If the service name below is already taken, Render assigns a different URL:
+# update the APP_URL env var, mobile/eas.json, mobile/app.json, and the GitHub
+# OAuth callback to match whatever URL Render actually gives you.
+
+services:
+  - type: web
+    name: leetplacards-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      # Public URL of this service; used for the OAuth redirect_uri and the
+      # GitHub webhook target. Must match the real Render URL exactly.
+      - key: APP_URL
+        value: https://leetplacards-api.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_ID
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      # Render generates strong random values for these on first deploy.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GITHUB_WEBHOOK_SECRET
+        generateValue: true

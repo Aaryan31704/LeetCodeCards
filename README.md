@@ -61,11 +61,25 @@ cp .env.example .env
 | `DATABASE_URL` | Supabase PostgreSQL connection string |
 | `GITHUB_OAUTH_CLIENT_ID` | From GitHub OAuth App (Settings → Developer settings → OAuth Apps) |
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth app secret |
-| `APP_URL` | Backend base URL (e.g. `http://localhost:8000` or your public URL for webhooks) |
-| `JWT_SECRET` | Random secret for JWT (change in production) |
+| `APP_URL` | Backend base URL. Must be publicly reachable for webhooks to work |
+| `JWT_SECRET` | Random secret for JWT. **Must** be changed from the default |
 | `GROQ_API_KEY` | From [console.groq.com](https://console.groq.com) |
-| `GROQ_MODEL` | Optional; default `llama-3.1-70b-versatile` |
+| `GROQ_MODEL` | Optional; default `openai/gpt-oss-120b` |
 | `GITHUB_WEBHOOK_SECRET` | Optional; set same value in GitHub repo webhook for verification |
+| `ALLOWED_REDIRECT_SCHEMES` | Optional; URL schemes allowed to receive the login token |
+| `CORS_ALLOW_ORIGINS` | Optional; comma-separated origins, defaults to `*` |
+| `JWT_EXPIRE_DAYS` | Optional; token lifetime, default `30` |
+| `DEBUG` | Optional; when `true`, 500 responses include exception details |
+
+Generate a JWT secret with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+The backend logs a warning at startup for each missing or insecure setting, so check the console on first run.
+
+> **Groq models get retired.** `llama-3.1-*` and `llama-3.3-70b-versatile` are already decommissioned and return HTTP 400. If placards come back with no description or approach, check [console.groq.com/docs/deprecations](https://console.groq.com/docs/deprecations) and update `GROQ_MODEL`.
 
 **GitHub OAuth App:** Create an OAuth App with Authorization callback URL: `{APP_URL}/auth/github/callback`. Scopes: `read:user`, `user:email`, `repo`, `admin:repo_hook`.
 
@@ -78,7 +92,33 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - API: http://localhost:8000  
 - Docs: http://localhost:8000/docs  
 
-**Webhook (production):** For GitHub to reach your backend on push, use a public URL (e.g. ngrok for local: `ngrok http 8000`, then set `APP_URL` to the ngrok URL). Set the same secret in GitHub repo → Settings → Webhooks → Add webhook → Payload URL `{APP_URL}/webhooks/github`, Content type `application/json`, Secret = `GITHUB_WEBHOOK_SECRET`.
+### Smoke test
+
+```bash
+cd backend
+python smoke_test.py
+```
+
+Checks auth enforcement, OAuth redirect validation, webhook signature and branch handling, and the parsing helpers. No database required.
+
+**Webhook (local dev):** For GitHub to reach your backend on push, use a public URL (e.g. ngrok for local: `ngrok http 8000`, then set `APP_URL` to the ngrok URL). The backend creates the repo webhook itself with `GITHUB_WEBHOOK_SECRET` applied, so no manual webhook setup is needed.
+
+---
+
+## 2b. Hosting in the cloud (Render, free)
+
+The repo contains a `render.yaml` blueprint, so the backend can run 24/7 without your laptop:
+
+1. Sign up at [render.com](https://render.com) (log in with GitHub is easiest).
+2. Dashboard → **New +** → **Blueprint** → select this repo → **Apply**.
+3. Render prompts for the secret env vars (`DATABASE_URL`, `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, `GROQ_API_KEY`) — paste them from `backend/.env`. `JWT_SECRET` and `GITHUB_WEBHOOK_SECRET` are generated automatically.
+4. After the first deploy, verify the service URL matches `https://leetplacards-api.onrender.com`. If Render assigned a different name, update the `APP_URL` env var in the dashboard, plus `mobile/app.json`, `mobile/eas.json`, and the OAuth callback below.
+5. Set your GitHub OAuth App's **Authorization callback URL** to `https://leetplacards-api.onrender.com/auth/github/callback`.
+6. Check `https://leetplacards-api.onrender.com/health` returns `{"status":"ok"}`.
+
+Every `git push` to `main` redeploys automatically.
+
+**Free-tier caveat:** the service sleeps after ~15 minutes idle and the next request takes ~1 minute while it wakes. The app's pull-to-refresh sync covers any webhook missed during sleep. To keep it always awake, point a free [UptimeRobot](https://uptimerobot.com) monitor at `/health` every 10 minutes (Render's free 750 instance-hours/month cover one always-on service).
 
 ---
 
@@ -110,7 +150,7 @@ npx eas build --platform android --profile preview
 npx eas build --platform ios --profile preview
 ```
 
-Before building, replace `https://api.example.com` in `mobile/eas.json` with your deployed backend domain.
+`mobile/eas.json` already points the preview and production profiles at the Render backend (`https://leetplacards-api.onrender.com`), so builds work off your laptop out of the box.
 
 ---
 
@@ -131,10 +171,15 @@ Before building, replace `https://api.example.com` in `mobile/eas.json` with you
 | GET | `/me` | Current user (Bearer token) |
 | POST | `/me/repo` | Connect repo (body: `repo_owner`, `repo_name`, optional `leetcode_path_prefix`) |
 | POST | `/me/sync` | Manually sync placards from connected repo |
-| GET | `/placards` | List current user’s placards |
+| POST | `/me/resync` | Re-process cards missing content (`{"force": true}` for all) |
+| GET | `/me/resync/status` | Poll background resync progress |
+| GET | `/placards` | List current user’s placards (`?full=true` for deck data) |
 | GET | `/placards/{id}` | Get one placard (with code) |
+| POST | `/placards/{id}/mastered` | Toggle mastered state |
 | POST | `/webhooks/github` | GitHub push webhook (no auth; verified by signature) |
 | GET | `/health` | Health check |
+
+Endpoints return `503` when the database is unreachable and `401` for a missing or invalid token.
 
 ---
 
@@ -152,6 +197,7 @@ backend/
     user_service.py
     placard_service.py
     github_service.py  # + create_webhook_for_repo
+    leetcode_service.py # problem description via LeetCode GraphQL
     llm_service.py
     routes/
       auth.py         # /auth/github, /auth/github/callback

@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { connectRepo, setAuthToken } from '../api';
@@ -37,12 +38,27 @@ export default function ConnectRepoScreen({ navigation }) {
     setError(null);
     setSubmitting(true);
     try {
-      await connectRepo(o, r, prefix.trim() || 'LeetCode');
-      await refreshUser();
-      navigation.replace('PlacardList');
+      const result = await connectRepo(o, r, prefix.trim() || 'LeetCode');
+      // Once the user has a repo, MainStack drops this screen and lands on the
+      // deck automatically, so navigating here would target an unmounted route.
+      const updated = await refreshUser();
+      if (!updated?.repo_owner) {
+        setError('Repo saved but the app could not refresh. Pull to refresh or restart the app.');
+        setSubmitting(false);
+        return;
+      }
+      if (result && result.webhook_created === false) {
+        // Alert rather than local state: this screen unmounts as soon as the
+        // refreshed user has a repo.
+        Alert.alert(
+          'Connected, but no webhook',
+          'Your repo is connected and syncing now, but GitHub could not be given a ' +
+            'webhook, so new pushes will not sync automatically. Use pull-to-refresh, ' +
+            'or set APP_URL to a public backend URL.'
+        );
+      }
     } catch (e) {
       setError(e.message || 'Failed to connect repo');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -56,7 +72,7 @@ export default function ConnectRepoScreen({ navigation }) {
         <Text style={styles.hint}>Placards sync when you push. Pull to refresh the list.</Text>
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.replace('PlacardList')}
+          onPress={() => navigation.navigate('PlacardList')}
         >
           <Text style={styles.buttonText}>View placards</Text>
         </TouchableOpacity>

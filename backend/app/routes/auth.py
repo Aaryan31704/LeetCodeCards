@@ -7,7 +7,8 @@ running on LAN (exp://192.168...) or via Expo tunnel (exp://u.expo.dev/...).
 
 import json
 import base64
-from urllib.parse import urlencode, unquote
+import logging
+from urllib.parse import urlencode, unquote, urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -18,9 +19,28 @@ from app.auth import create_token
 from app.user_service import upsert_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
+
+
+def _is_allowed_redirect(url: str) -> bool:
+    """Only allow redirects to the app's own deep-link schemes.
+
+    The redirect target carries the user's JWT, so an unvalidated value would
+    let an attacker craft a login link that leaks the token to their own host.
+    """
+    if not url:
+        return False
+    try:
+        scheme = urlparse(url).scheme.lower()
+    except ValueError:
+        return False
+    if not scheme:
+        return False
+    allowed = {s.lower().rstrip(":/") for s in get_settings().ALLOWED_REDIRECT_SCHEMES}
+    return scheme in allowed
 
 
 def _encode_state(app_redirect: str) -> str:
@@ -33,9 +53,13 @@ def _decode_state(state: str) -> str | None:
     """Decode the app redirect URL from the OAuth state parameter."""
     try:
         payload = json.loads(base64.urlsafe_b64decode(state))
-        return payload.get("r")
     except Exception:
         return None
+    redirect = payload.get("r") if isinstance(payload, dict) else None
+    if redirect and not _is_allowed_redirect(redirect):
+        logger.warning("Rejected disallowed OAuth redirect target: %s", redirect)
+        return None
+    return redirect
 
 
 @router.get("/github")
@@ -55,7 +79,16 @@ async def auth_github(app_redirect: str | None = Query(None)):
 
     state = ""
     if app_redirect:
-        state = _encode_state(unquote(app_redirect))
+        decoded_redirect = unquote(app_redirect)
+        if not _is_allowed_redirect(decoded_redirect):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "app_redirect scheme is not allowed. Permitted schemes: "
+                    + ", ".join(settings.ALLOWED_REDIRECT_SCHEMES)
+                ),
+            )
+        state = _encode_state(decoded_redirect)
 
     params = {
         "client_id": settings.GITHUB_OAUTH_CLIENT_ID,

@@ -297,6 +297,19 @@ export default function FlashcardDeckScreen({ navigation }) {
     }, 2500);
   }, [load]);
 
+  // Surface the background sync that kicks off right after connecting a repo.
+  useEffect(() => {
+    let cancelled = false;
+    getResyncStatus()
+      .then((s) => {
+        if (cancelled || s.status !== 'running') return;
+        setResyncProgress(s);
+        startPolling();
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [startPolling]);
+
   useEffect(() => { return () => { if (pollRef.current) clearInterval(pollRef.current); }; }, []);
 
   const slide = useCallback((to) => {

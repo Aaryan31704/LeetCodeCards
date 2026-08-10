@@ -8,9 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-
-logger = logging.getLogger(__name__)
-from app.database import init_db, close_db
+from app.database import init_db, close_db, DatabaseUnavailable
 from app.models import (
     CREATE_USERS_SQL,
     CREATE_WORKER_STATE_SQL,
@@ -25,10 +23,17 @@ from app.routes.placards import router as placards_router
 from app.routes.me import router as me_router
 from app.routes.webhooks import router as webhooks_router
 
+logger = logging.getLogger("uvicorn.error")
+
+settings = get_settings()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB and run migrations on startup."""
+    for warning in settings.config_warnings():
+        logger.warning("Config: %s", warning)
+
     try:
         pool = await init_db()
         if pool:
@@ -42,9 +47,9 @@ async def lifespan(app: FastAPI):
                 await conn.execute(MIGRATE_PLACARDS_INDEX_SQL)
                 await conn.execute(MIGRATE_PLACARDS_V2_SQL)
                 await conn.execute(MIGRATE_PLACARDS_V3_SQL)
+            logger.info("Database ready")
     except Exception as e:
-        import logging
-        logging.getLogger("uvicorn.error").warning(
+        logger.warning(
             "Database connection failed at startup: %s. Check DATABASE_URL and network.", e
         )
     yield
@@ -52,15 +57,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=get_settings().API_TITLE,
-    version=get_settings().API_VERSION,
+    title=settings.API_TITLE,
+    version=settings.API_VERSION,
     lifespan=lifespan,
 )
 
+# Credentials cannot be combined with a wildcard origin; browsers reject the response.
+_allow_credentials = "*" not in settings.CORS_ALLOW_ORIGINS
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.CORS_ALLOW_ORIGINS,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,13 +79,28 @@ app.include_router(placards_router)
 app.include_router(webhooks_router)
 
 
+@app.exception_handler(DatabaseUnavailable)
+async def database_unavailable_handler(request: Request, exc: DatabaseUnavailable):
+    """A down database is transient, so report 503 rather than an opaque 500."""
+    logger.error("Database unavailable on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database unavailable. Check DATABASE_URL and try again."},
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Return 500 with JSON detail so clients can show the error."""
-    logger.exception("Unhandled error: %s", exc)
+    """Log the failure and return an opaque 500 so internals are not exposed."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    if settings.DEBUG:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "type": type(exc).__name__},
+        )
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "type": type(exc).__name__},
+        content={"detail": "Internal server error"},
     )
 
 

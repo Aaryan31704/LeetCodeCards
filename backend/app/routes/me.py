@@ -1,13 +1,19 @@
 """Current user, repo connection, sync, and resync endpoints."""
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.deps import get_current_user
-from app.user_service import set_user_repo, get_user_by_id
+from app.user_service import set_user_repo, get_user_by_github_id
 from app.github_service import create_webhook_for_repo
-from app.placard_service import process_new_commits_for_user
+from app.placard_service import (
+    process_new_commits_for_user,
+    full_resync_background,
+    smart_resync_background,
+    get_incomplete_placards,
+    get_resync_progress,
+    is_resync_running,
+    spawn_background,
+)
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -36,7 +42,6 @@ async def connect_repo(
         raise HTTPException(status_code=400, detail="repo_owner and repo_name required")
 
     user_id = current_user["id"]
-    from app.user_service import get_user_by_github_id
     full_user = await get_user_by_github_id(current_user["github_id"])
     if not full_user or not full_user.get("access_token"):
         raise HTTPException(status_code=400, detail="User token missing; try logging in again")
@@ -49,8 +54,7 @@ async def connect_repo(
 
     await set_user_repo(user_id, repo_owner, repo_name, leetcode_path_prefix)
 
-    from app.placard_service import full_resync_background
-    asyncio.create_task(full_resync_background(user_id))
+    spawn_background(full_resync_background(user_id))
 
     return {
         "repo_owner": repo_owner,
@@ -77,17 +81,10 @@ async def resync(
 
     Pass {"force": true} to force a full resync of everything.
     """
-    from app.placard_service import (
-        smart_resync_background,
-        full_resync_background,
-        get_incomplete_placards,
-        get_resync_progress,
-    )
-
     user_id = current_user["id"]
 
     progress = await get_resync_progress(user_id)
-    if progress and progress.get("status") == "running":
+    if is_resync_running(progress):
         return {
             "status": "already_running",
             "total": progress.get("total", 0),
@@ -98,22 +95,28 @@ async def resync(
     force = (body or {}).get("force", False)
 
     if force:
-        asyncio.create_task(full_resync_background(user_id))
+        spawn_background(full_resync_background(user_id))
         return {"status": "started", "mode": "full"}
-    else:
-        incomplete = await get_incomplete_placards(user_id)
-        if not incomplete:
-            return {"status": "done", "total": 0, "completed": 0, "message": "All cards already have content."}
-        asyncio.create_task(smart_resync_background(user_id))
-        return {"status": "started", "mode": "smart", "cards_to_process": len(incomplete)}
+
+    incomplete = await get_incomplete_placards(user_id)
+    if not incomplete:
+        return {"status": "done", "total": 0, "completed": 0, "message": "All cards already have content."}
+    spawn_background(smart_resync_background(user_id))
+    return {"status": "started", "mode": "smart", "cards_to_process": len(incomplete)}
 
 
 @router.get("/resync/status")
 async def resync_status(current_user: dict = Depends(get_current_user)):
     """Poll resync progress."""
-    from app.placard_service import get_resync_progress
-
     progress = await get_resync_progress(current_user["id"])
     if not progress:
         return {"status": "idle", "total": 0, "completed": 0, "current": ""}
+    if progress.get("status") == "running" and not is_resync_running(progress):
+        # Reported as running but gone quiet, so stop the client polling forever.
+        return {
+            "status": "error",
+            "total": progress.get("total", 0),
+            "completed": progress.get("completed", 0),
+            "current": "Sync stopped unexpectedly. Please try again.",
+        }
     return progress

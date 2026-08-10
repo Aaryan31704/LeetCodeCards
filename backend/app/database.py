@@ -11,6 +11,10 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+class DatabaseUnavailable(RuntimeError):
+    """Raised when the pool cannot be created, so routes can answer 503 not 500."""
+
+
 def _connection_url_with_ssl(url: str) -> str:
     """Ensure Supabase/cloud Postgres URLs use SSL (required by Supabase)."""
     if not url or "supabase" not in url.lower():
@@ -64,8 +68,9 @@ async def get_conn() -> AsyncGenerator[asyncpg.Connection, None]:
     if _pool is None:
         _pool = await get_pool()
     if _pool is None:
-        raise RuntimeError(
-            "Database not configured or unreachable. Set DATABASE_URL in .env and ensure the host is reachable (check URL, internet, and Supabase project status)."
+        raise DatabaseUnavailable(
+            "Database not configured or unreachable. Set DATABASE_URL in .env and ensure "
+            "the host is reachable (check URL, internet, and Supabase project status)."
         )
     async with _pool.acquire() as conn:
         yield conn
