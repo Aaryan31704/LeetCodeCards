@@ -183,6 +183,14 @@ check("leetcode file matched", _is_leetcode_file("LeetCode/0001-two-sum.py", "Le
 check("readme not matched", not _is_leetcode_file("LeetCode/README.md", "LeetCode"))
 check("wrong prefix not matched", not _is_leetcode_file("other/0001-two-sum.py", "LeetCode"))
 check("empty prefix matches any solution", _is_leetcode_file("anywhere/0001-two-sum.py", ""))
+check(
+    "LeetHub root cpp is skipped with LeetCode prefix",
+    not _is_leetcode_file("0001-two-sum/0001-two-sum.cpp", "LeetCode"),
+)
+check(
+    "LeetHub root cpp matches with empty prefix",
+    _is_leetcode_file("0001-two-sum/0001-two-sum.cpp", ""),
+)
 check("prefix-only path rejected", not _is_leetcode_file("LeetCode", "LeetCode"))
 check(
     "slug extracted from dir",

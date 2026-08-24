@@ -95,7 +95,18 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   useEffect(() => {
     load();
-    syncNow().catch(() => {});
+    (async () => {
+      try {
+        await syncNow();
+      } catch (_) {}
+      try {
+        const s = await getResyncStatus();
+        if (s.status === 'running') {
+          setResyncProgress(s);
+          startPolling();
+        }
+      } catch (_) {}
+    })();
     AsyncStorage.getItem(HINT_KEY).then((v) => {
       if (!v) setShowHint(true);
     });
@@ -299,20 +310,29 @@ export default function FlashcardDeckScreen({ navigation }) {
     );
   }
 
+  const isResyncing = resyncProgress && resyncProgress.status === 'running';
+
   if (!card) {
     return (
       <Screen>
         <ScreenHeader title="Study" subtitle="0 cards" right={headerRight} />
+        <ResyncBanner progress={resyncProgress} />
         <StatusView
-          title="No cards yet"
-          message="Push LeetCode solutions to your connected repo."
+          loading={isResyncing}
+          title={isResyncing ? 'Importing your solutions…' : 'No cards yet'}
+          message={
+            isResyncing
+              ? 'Existing files in the repo are being turned into cards. This can take a few minutes.'
+              : 'Cards come from files already in the repo. If solutions sit at the repo root (not in a LeetCode/ folder), tap Import — you do not need to push again.'
+          }
+          actionLabel={isResyncing ? undefined : 'Import existing solutions'}
+          onAction={isResyncing ? undefined : () => handleResync(true)}
         />
       </Screen>
     );
   }
 
   const progress = total > 0 ? (idx + 1) / total : 0;
-  const isResyncing = resyncProgress && resyncProgress.status === 'running';
   const masteredCount = allCards.filter((c) => c.mastered).length;
 
   return (

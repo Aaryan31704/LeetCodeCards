@@ -65,8 +65,8 @@ class Settings:
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
-    # LeetCode file patterns (e.g. LeetHub pushes to paths like "LeetCode/123-problem-name.py")
-    LEETCODE_PATH_PREFIX: str = os.getenv("LEETCODE_PATH_PREFIX", "LeetCode")
+    # Empty = import solution files anywhere in the repo (LeetHub v2 layout).
+    LEETCODE_PATH_PREFIX: str = os.getenv("LEETCODE_PATH_PREFIX", "")
     LEETCODE_EXTENSIONS: tuple = ("py", "java", "js", "ts", "cpp", "go", "rs")
 
     # GitHub OAuth (for "Login with GitHub")

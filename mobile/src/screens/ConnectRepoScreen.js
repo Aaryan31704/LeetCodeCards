@@ -66,7 +66,7 @@ export default function ConnectRepoScreen({ navigation }) {
     setError(null);
     setSubmitting(true);
     try {
-      const result = await connectRepo(o, r, prefix.trim() || 'LeetCode');
+      const result = await connectRepo(o, r, prefix.trim());
       const updated = await refreshUser();
       if (!userHasRepo(updated)) {
         setError('Repo saved but the app could not refresh. Pull to refresh or restart the app.');
@@ -143,12 +143,15 @@ export default function ConnectRepoScreen({ navigation }) {
           />
           <TextInput
             style={styles.input}
-            placeholder="Path prefix (default: LeetCode)"
+            placeholder="Path prefix (leave blank if files are at repo root)"
             placeholderTextColor={C.light}
             value={prefix}
             onChangeText={setPrefix}
             autoCapitalize="none"
           />
+          <Text style={styles.hint}>
+            Leave this blank for LeetHub-style repos (0001-two-sum/…). Only set a folder if solutions live under one, like LeetCode/.
+          </Text>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <AppButton
             title={alreadyLinked ? 'Switch repo & resync' : 'Connect repo & sync'}
@@ -167,7 +170,7 @@ const styles = StyleSheet.create({
   hint: {
     color: C.mid,
     fontSize: 15,
-    marginBottom: 20,
+    marginBottom: 12,
     lineHeight: 22,
     fontFamily: fonts.regular,
   },

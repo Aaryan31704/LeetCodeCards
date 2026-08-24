@@ -64,8 +64,8 @@ async def upsert_user(
         return dict(row)
 
 
-async def set_user_repo(user_id: UUID, repo_owner: str, repo_name: str, leetcode_path_prefix: str = "LeetCode") -> None:
-    """Connect a repo to the user (for webhook and sync)."""
+async def set_user_repo(user_id: UUID, repo_owner: str, repo_name: str, leetcode_path_prefix: str = "") -> None:
+    """Connect a repo to the user (for webhook and sync). Empty prefix = whole repo."""
     async with get_conn() as conn:
         await conn.execute(
             """
@@ -74,6 +74,6 @@ async def set_user_repo(user_id: UUID, repo_owner: str, repo_name: str, leetcode
             """,
             repo_owner,
             repo_name,
-            leetcode_path_prefix or "LeetCode",
+            leetcode_path_prefix or "",
             user_id,
         )

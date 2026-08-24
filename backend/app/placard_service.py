@@ -252,10 +252,26 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
         owner, repo, last_sha, token=token, leetcode_path_prefix=prefix
     )
     if not files_with_content:
-        latest = await get_latest_commit_sha(owner, repo, token)
-        if latest:
-            await set_last_processed_commit(user_id, latest)
-        return 0
+        async with get_conn() as conn:
+            existing = await conn.fetchval(
+                "SELECT COUNT(*) FROM placards WHERE user_id = $1", user_id
+            )
+        # First import often saved the HEAD sha after matching 0 files because
+        # the default LeetCode/ prefix missed LeetHub files at the repo root.
+        if last_sha and not existing:
+            progress = await get_resync_progress(user_id)
+            if not is_resync_running(progress):
+                logger.info(
+                    "User %s has 0 cards; starting full import of %s/%s",
+                    user_id, owner, repo,
+                )
+                spawn_background(full_resync_background(user_id))
+            return 0
+        if not files_with_content:
+            latest = await get_latest_commit_sha(owner, repo, token)
+            if latest:
+                await set_last_processed_commit(user_id, latest)
+            return 0
 
     total = len(files_with_content)
     logger.info("User %s: %d new file(s) to process", user_id, total)

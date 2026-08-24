@@ -127,6 +127,62 @@ async def get_file_content(
         return r.text
 
 
+async def _list_tree_blob_paths(
+    owner: str, repo: str, sha: str, token: Optional[str] = None
+) -> list[str]:
+    """List every file path at a commit via the Git Trees API."""
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{sha}"
+    async with _client() as client:
+        r = await client.get(
+            url, params={"recursive": "1"}, headers=_headers(token)
+        )
+        if r.status_code != 200:
+            logger.warning(
+                "Failed to list tree for %s/%s@%s: %s %s",
+                owner, repo, sha[:8], r.status_code, r.text[:200],
+            )
+            return []
+        data = r.json()
+        if data.get("truncated"):
+            logger.warning("Git tree for %s/%s was truncated; some files may be skipped", owner, repo)
+        return [
+            t["path"]
+            for t in (data.get("tree") or [])
+            if t.get("type") == "blob" and t.get("path")
+        ]
+
+
+async def list_leetcode_files_at_head(
+    owner: str,
+    repo: str,
+    token: Optional[str] = None,
+    leetcode_path_prefix: Optional[str] = None,
+) -> list[tuple[str, str]]:
+    """Import solutions that already exist on the default branch.
+
+    If a path prefix matches nothing (common when LeetHub files sit at repo
+    root instead of under LeetCode/), scan the whole tree.
+    """
+    sha = await get_latest_commit_sha(owner, repo, token)
+    if not sha:
+        return []
+    paths = await _list_tree_blob_paths(owner, repo, sha, token)
+    prefix = (leetcode_path_prefix or "").strip()
+    matched = [p for p in paths if _is_leetcode_file(p, prefix)]
+    if not matched and prefix:
+        logger.info(
+            "Prefix %r matched 0 files in %s/%s; scanning whole repo",
+            prefix, owner, repo,
+        )
+        matched = [p for p in paths if _is_leetcode_file(p, "")]
+    out = []
+    for path in matched:
+        content = await get_file_content(owner, repo, path, token)
+        if content:
+            out.append((path, content))
+    return out
+
+
 async def get_new_leetcode_files_since(
     owner: str,
     repo: str,
@@ -137,7 +193,14 @@ async def get_new_leetcode_files_since(
     """
     Returns list of (file_path, file_content) for LeetCode solution files
     in commits after last_processed_sha.
+
+    A missing cursor (first connect / full resync) lists the current tree so
+    existing files are imported without waiting for a new push.
     """
+    if not last_processed_sha:
+        return await list_leetcode_files_at_head(
+            owner, repo, token=token, leetcode_path_prefix=leetcode_path_prefix
+        )
     commits = await get_commits_since(owner, repo, last_processed_sha, token)
     seen_paths = set()
     out = []

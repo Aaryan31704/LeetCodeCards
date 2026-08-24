@@ -33,14 +33,14 @@ export async function fetchMe() {
   return res.json();
 }
 
-export async function connectRepo(repoOwner, repoName, leetcodePathPrefix = 'LeetCode') {
+export async function connectRepo(repoOwner, repoName, leetcodePathPrefix = '') {
   const res = await fetch(`${API_BASE_URL}/me/repo`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({
       repo_owner: repoOwner,
       repo_name: repoName,
-      leetcode_path_prefix: leetcodePathPrefix || 'LeetCode',
+      leetcode_path_prefix: leetcodePathPrefix || '',
     }),
   });
   if (res.status === 401) throw new Error('Not authenticated');

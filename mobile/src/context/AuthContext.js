@@ -7,11 +7,11 @@ import { API_BASE_URL } from '../config';
 WebBrowser.maybeCompleteAuthSession();
 
 export function repoFromUser(user) {
-  if (!user) return { owner: '', name: '', prefix: 'LeetCode' };
+  if (!user) return { owner: '', name: '', prefix: '' };
   return {
     owner: user.repo_owner || '',
     name: user.repo_name || '',
-    prefix: user.leetcode_path_prefix || 'LeetCode',
+    prefix: user.leetcode_path_prefix || '',
   };
 }
 

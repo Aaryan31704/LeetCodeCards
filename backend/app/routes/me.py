@@ -27,7 +27,7 @@ async def me(current_user: dict = Depends(get_current_user)):
         "username": current_user["username"],
         "repo_owner": current_user.get("repo_owner"),
         "repo_name": current_user.get("repo_name"),
-        "leetcode_path_prefix": current_user.get("leetcode_path_prefix") or "LeetCode",
+        "leetcode_path_prefix": current_user.get("leetcode_path_prefix") or "",
     }
 
 
@@ -39,7 +39,7 @@ async def connect_repo(
     """Connect a GitHub repo. Creates webhook and kicks off initial sync in background."""
     repo_owner = (body.get("repo_owner") or "").strip()
     repo_name = (body.get("repo_name") or "").strip()
-    leetcode_path_prefix = (body.get("leetcode_path_prefix") or "LeetCode").strip()
+    leetcode_path_prefix = (body.get("leetcode_path_prefix") or "").strip()
     if not repo_owner or not repo_name:
         raise HTTPException(status_code=400, detail="repo_owner and repo_name required")
 
