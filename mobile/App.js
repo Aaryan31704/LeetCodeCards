@@ -14,7 +14,7 @@ import {
   DMSans_700Bold,
 } from '@expo-google-fonts/dm-sans';
 import * as SplashScreen from 'expo-splash-screen';
-import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { AuthProvider, useAuth, userHasRepo } from './src/context/AuthContext';
 import { setAuthToken } from './src/api';
 import LoginScreen from './src/screens/LoginScreen';
 import ConnectRepoScreen from './src/screens/ConnectRepoScreen';
@@ -68,17 +68,18 @@ function MainTabs() {
 
 function MainStack() {
   const { user } = useAuth();
-  const hasRepo = user?.repo_owner && user?.repo_name;
+  const hasRepo = userHasRepo(user);
 
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      {!hasRepo ? (
-        <Stack.Screen
-          name="ConnectRepo"
-          component={ConnectRepoScreen}
-          options={{ headerShown: false }}
-        />
-      ) : null}
+    <Stack.Navigator
+      screenOptions={screenOptions}
+      initialRouteName={hasRepo ? 'MainTabs' : 'ConnectRepo'}
+    >
+      <Stack.Screen
+        name="ConnectRepo"
+        component={ConnectRepoScreen}
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="MainTabs"
         component={MainTabs}

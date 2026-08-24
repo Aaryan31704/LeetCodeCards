@@ -8,9 +8,10 @@ import {
   RefreshControl,
   TextInput,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { fetchPlacards, setAuthToken, syncNow } from '../api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, repoFromUser } from '../context/AuthContext';
 import DiffBadge from '../components/DiffBadge';
 import Screen from '../components/Screen';
 import ScreenHeader from '../components/ScreenHeader';
@@ -74,10 +75,33 @@ export default function PlacardListScreen({ navigation }) {
   const [diffFilter, setDiffFilter] = useState('All');
   const [patternFilter, setPatternFilter] = useState('All');
 
-  const handleLogout = useCallback(async () => {
-    setAuthToken(null);
-    await logout();
+  const handleLogout = useCallback(() => {
+    Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setAuthToken(null);
+          await logout();
+        },
+      },
+    ]);
   }, [logout]);
+
+  const handleChangeRepo = useCallback(() => {
+    const linked = repoFromUser(user);
+    Alert.alert(
+      'Change repo',
+      linked.owner
+        ? `Currently ${linked.owner}/${linked.name}. Switching replaces this deck with cards from the new repo.`
+        : 'Connect a different GitHub repo.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Change repo', onPress: () => navigation.navigate('ConnectRepo') },
+      ]
+    );
+  }, [user, navigation]);
 
   const load = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -129,14 +153,26 @@ export default function PlacardListScreen({ navigation }) {
   ).size;
   const progress = placards.length ? mastered / placards.length : 0;
 
+  const linked = repoFromUser(user);
   const header = (
     <ScreenHeader
       title="Library"
-      subtitle={user?.username ? `@${user.username}` : 'All cards'}
+      subtitle={
+        linked.owner
+          ? `${linked.owner}/${linked.name}`
+          : user?.username
+            ? `@${user.username}`
+            : 'All cards'
+      }
       right={
-        <TouchableOpacity onPress={handleLogout} hitSlop={8}>
-          <Text style={styles.logout}>Log out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={handleChangeRepo} hitSlop={8}>
+            <Text style={styles.logout}>Change repo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLogout} hitSlop={8}>
+            <Text style={styles.logout}>Log out</Text>
+          </TouchableOpacity>
+        </View>
       }
     />
   );
@@ -264,7 +300,8 @@ export default function PlacardListScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  logout: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  logout: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 },
 
   stats: {
     marginHorizontal: 16,

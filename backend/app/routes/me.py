@@ -1,5 +1,6 @@
 """Current user, repo connection, sync, and resync endpoints."""
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.deps import get_current_user
@@ -13,6 +14,7 @@ from app.placard_service import (
     get_resync_progress,
     is_resync_running,
     spawn_background,
+    clear_deck_for_user,
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -46,13 +48,26 @@ async def connect_repo(
     if not full_user or not full_user.get("access_token"):
         raise HTTPException(status_code=400, detail="User token missing; try logging in again")
 
+    prev_owner = (current_user.get("repo_owner") or "").strip()
+    prev_name = (current_user.get("repo_name") or "").strip()
+    repo_changed = (prev_owner, prev_name) != (repo_owner, repo_name) and bool(prev_owner and prev_name)
+
     webhook_ok = await create_webhook_for_repo(
-        repo_owner=repo_owner,
-        repo_name=repo_name,
-        access_token=full_user["access_token"],
+        repo_owner,
+        repo_name,
+        full_user["access_token"],
     )
 
-    await set_user_repo(user_id, repo_owner, repo_name, leetcode_path_prefix)
+    try:
+        await set_user_repo(user_id, repo_owner, repo_name, leetcode_path_prefix)
+    except asyncpg.exceptions.UniqueViolationError:
+        raise HTTPException(
+            status_code=409,
+            detail="That repo is already connected to another LeetPlacards account.",
+        )
+
+    if repo_changed:
+        await clear_deck_for_user(user_id)
 
     spawn_background(full_resync_background(user_id))
 

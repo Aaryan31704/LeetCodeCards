@@ -94,6 +94,8 @@ async def auth_github(app_redirect: str | None = Query(None)):
         "client_id": settings.GITHUB_OAUTH_CLIENT_ID,
         "redirect_uri": redirect_uri,
         "scope": "read:user user:email repo admin:repo_hook",
+        # Ask GitHub for a login screen so logout → another account actually works.
+        "prompt": "login",
     }
     if state:
         params["state"] = state

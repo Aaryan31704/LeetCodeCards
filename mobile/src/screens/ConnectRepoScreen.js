@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,9 @@ import {
   Platform,
   ScrollView,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, repoFromUser, userHasRepo } from '../context/AuthContext';
 import { connectRepo, setAuthToken } from '../api';
 import { C, fonts, radius } from '../theme';
 import Screen from '../components/Screen';
@@ -17,18 +18,43 @@ import ScreenHeader from '../components/ScreenHeader';
 import AppButton from '../components/AppButton';
 
 export default function ConnectRepoScreen({ navigation }) {
-  const { token, user, refreshUser } = useAuth();
-  const [owner, setOwner] = useState('');
-  const [repo, setRepo] = useState('');
-  const [prefix, setPrefix] = useState('LeetCode');
+  const { token, user, refreshUser, logout } = useAuth();
+  const linked = repoFromUser(user);
+  const alreadyLinked = userHasRepo(user);
+  const [owner, setOwner] = useState(linked.owner);
+  const [repo, setRepo] = useState(linked.name);
+  const [prefix, setPrefix] = useState(linked.prefix);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (token) setAuthToken(token);
   }, [token]);
 
-  const hasRepo = user?.repo_owner && user?.repo_name;
+  useEffect(() => {
+    const r = repoFromUser(user);
+    setOwner(r.owner);
+    setRepo(r.name);
+    setPrefix(r.prefix);
+  }, [user]);
+
+  const goToDeck = () => {
+    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Log out', 'Sign in again to use a different GitHub account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setAuthToken(null);
+          await logout();
+        },
+      },
+    ]);
+  };
 
   const handleConnect = async () => {
     const o = owner.trim();
@@ -42,47 +68,41 @@ export default function ConnectRepoScreen({ navigation }) {
     try {
       const result = await connectRepo(o, r, prefix.trim() || 'LeetCode');
       const updated = await refreshUser();
-      if (!updated?.repo_owner) {
+      if (!userHasRepo(updated)) {
         setError('Repo saved but the app could not refresh. Pull to refresh or restart the app.');
-        setSubmitting(false);
         return;
       }
       if (result && result.webhook_created === false) {
         Alert.alert(
           'Connected, but no webhook',
-          'Your repo is connected and syncing now, but GitHub could not be given a ' +
-            'webhook, so new pushes will not sync automatically. Use pull-to-refresh.'
+          'Your repo is linked and syncing now, but GitHub could not be given a webhook, so new pushes will not sync automatically. Use pull-to-refresh.',
+          [{ text: 'OK', onPress: goToDeck }]
         );
+        return;
       }
+      goToDeck();
     } catch (e) {
       setError(e.message || 'Failed to connect repo');
+    } finally {
       setSubmitting(false);
     }
   };
 
-  if (hasRepo) {
-    return (
-      <Screen bottomInset>
-        <ScreenHeader
-          title="Connected"
-          subtitle={`${user.repo_owner}/${user.repo_name}`}
-        />
-        <View style={styles.body}>
-          <Text style={styles.hint}>Placards sync when you push. Pull to refresh the list.</Text>
-          <AppButton
-            title="Open deck"
-            onPress={() => navigation.navigate('MainTabs')}
-          />
-        </View>
-      </Screen>
-    );
-  }
-
   return (
     <Screen bottomInset>
       <ScreenHeader
-        title="Connect repo"
-        subtitle="Link the GitHub repo where you push solutions"
+        title={alreadyLinked ? 'Change repo' : 'Connect repo'}
+        subtitle={
+          alreadyLinked
+            ? `Currently ${linked.owner}/${linked.name}`
+            : 'Link the GitHub repo where you push solutions'
+        }
+        onBack={alreadyLinked ? goToDeck : undefined}
+        right={
+          <TouchableOpacity onPress={handleLogout} hitSlop={8}>
+            <Text style={styles.logout}>Log out</Text>
+          </TouchableOpacity>
+        }
       />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -93,7 +113,9 @@ export default function ConnectRepoScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.hint}>
-            We’ll create a webhook so new pushes become placards automatically (e.g. LeetHub).
+            {alreadyLinked
+              ? 'Connecting a different repo replaces this deck with cards from the new one.'
+              : 'We’ll create a webhook so new pushes become placards automatically (e.g. LeetHub).'}
           </Text>
           <TextInput
             style={styles.input}
@@ -129,7 +151,7 @@ export default function ConnectRepoScreen({ navigation }) {
           />
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
           <AppButton
-            title="Connect repo & sync"
+            title={alreadyLinked ? 'Switch repo & resync' : 'Connect repo & sync'}
             onPress={handleConnect}
             loading={submitting}
           />
@@ -141,7 +163,6 @@ export default function ConnectRepoScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  body: { paddingHorizontal: 20, paddingTop: 8 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
   hint: {
     color: C.mid,
@@ -168,4 +189,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.medium,
   },
+  logout: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
 });

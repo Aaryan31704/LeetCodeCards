@@ -287,6 +287,17 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
 
 # ── Smart resync (only incomplete cards) ──
 
+async def clear_deck_for_user(user_id: UUID) -> None:
+    """Drop this user's cards and commit cursor so a new repo starts clean."""
+    async with get_conn() as conn:
+        await conn.execute("DELETE FROM placards WHERE user_id = $1", user_id)
+        await conn.execute(
+            "DELETE FROM worker_state WHERE key = $1",
+            _last_commit_key(user_id),
+        )
+    logger.info("Cleared deck for user %s after repo change", user_id)
+
+
 async def get_incomplete_placards(user_id: UUID) -> list[dict]:
     """Find cards that are missing a proper description or approach."""
     async with get_conn() as conn:

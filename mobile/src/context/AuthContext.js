@@ -4,6 +4,22 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { API_BASE_URL } from '../config';
 
+WebBrowser.maybeCompleteAuthSession();
+
+export function repoFromUser(user) {
+  if (!user) return { owner: '', name: '', prefix: 'LeetCode' };
+  return {
+    owner: user.repo_owner || '',
+    name: user.repo_name || '',
+    prefix: user.leetcode_path_prefix || 'LeetCode',
+  };
+}
+
+export function userHasRepo(user) {
+  const r = repoFromUser(user);
+  return Boolean(r.owner && r.name);
+}
+
 const TOKEN_KEY = '@leetplacards_token';
 const AuthContext = createContext(null);
 
@@ -93,7 +109,9 @@ export function AuthProvider({ children }) {
     const redirectUrl = Linking.createURL('auth/callback');
     const authUrl = `${API_BASE_URL}/auth/github?app_redirect=${encodeURIComponent(redirectUrl)}`;
     try {
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl, {
+        preferEphemeralSession: true,
+      });
       if (result.type === 'success' && result.url) {
         const parsed = Linking.parse(result.url);
         if (parsed.queryParams?.error) {

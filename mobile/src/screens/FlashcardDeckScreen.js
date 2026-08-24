@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { fetchPlacards, toggleMastered, resyncCards, getResyncStatus, syncNow } from '../api';
+import { fetchPlacards, toggleMastered, resyncCards, getResyncStatus, syncNow, setAuthToken } from '../api';
+import { useAuth } from '../context/AuthContext';
 import FlipCard from '../components/FlipCard';
 import CodeModal from '../components/CodeModal';
 import Screen from '../components/Screen';
@@ -95,6 +96,7 @@ function SessionDone({ stats, onAgain, onExit }) {
 }
 
 export default function FlashcardDeckScreen({ navigation }) {
+  const { logout } = useAuth();
   const [allCards, setAllCards] = useState([]);
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -364,10 +366,31 @@ export default function FlashcardDeckScreen({ navigation }) {
     ]);
   };
 
+  const headerLogout = (
+    <TouchableOpacity
+      onPress={() => {
+        Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Log out',
+            style: 'destructive',
+            onPress: async () => {
+              setAuthToken(null);
+              await logout();
+            },
+          },
+        ]);
+      }}
+      hitSlop={8}
+    >
+      <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 }}>Log out</Text>
+    </TouchableOpacity>
+  );
+
   if (loading) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="Loading" />
+        <ScreenHeader title="Study" subtitle="Loading" right={headerLogout} />
         <StatusView loading message="Loading your deck…" />
       </Screen>
     );
@@ -375,7 +398,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   if (error) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="Couldn’t load" />
+        <ScreenHeader title="Study" subtitle="Couldn’t load" right={headerLogout} />
         <StatusView error={error} onRetry={load} />
       </Screen>
     );
@@ -400,7 +423,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   if (!card) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="0 cards" />
+        <ScreenHeader title="Study" subtitle="0 cards" right={headerLogout} />
         <StatusView
           title={hideMastered ? 'No unmastered cards' : 'No cards yet'}
           message={
@@ -431,6 +454,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             ? `Hunt ${idx + 1} of ${total}`
             : `${idx + 1} of ${total} · ${masteredCount} mastered`
         }
+        right={headerLogout}
       />
 
       <View style={styles.progressTrack}>
