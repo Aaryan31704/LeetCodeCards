@@ -244,6 +244,10 @@ check("normalize keeps transfer separate", "triplet" in normalized["transfer_que
 check("normalize maps solver_note to summary", "extra memory" in normalized["summary"])
 check("normalize splits complexity badges", normalized["time_complexity"] == "O(n)")
 check("normalize strips pattern leak from clues", "Two Pointers" not in normalized["recognition_clues"])
+check("normalize maps why_this_pattern to core_insight", _normalize_back(
+    {"pattern": "Two Pointers", "why_this_pattern": "Sorted input plus a pair target.", "approach": "Walk from both ends."},
+    "fallback",
+)["core_insight"] == "Sorted input plus a pair target.")
 check("empty parse uses fallback", _normalize_back(None, "nope")["approach"] == "nope")
 
 print("\n== Stale resync detection ==")

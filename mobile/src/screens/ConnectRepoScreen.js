@@ -39,7 +39,7 @@ export default function ConnectRepoScreen({ navigation }) {
   }, [user]);
 
   const goToDeck = () => {
-    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+    navigation.reset({ index: 0, routes: [{ name: 'Study' }] });
   };
 
   const handleLogout = () => {

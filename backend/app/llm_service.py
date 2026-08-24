@@ -216,6 +216,9 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
     back = {key: str(parsed.get(key) or "").strip() for key in _BACK_FIELDS}
     if not back["approach"]:
         back["approach"] = fallback_msg
+    why = str(parsed.get("why_this_pattern") or back.get("core_insight") or "").strip()
+    if why:
+        back["core_insight"] = why
     pattern = back.get("pattern") or ""
     clues = back.get("recognition_clues") or ""
     if pattern and clues:
@@ -269,30 +272,18 @@ Return ONLY valid JSON with these keys:
 
 - "pattern": Primary algorithm/data-structure pattern (e.g. "Two Pointers", "Sliding Window", "Hash Map", "Binary Search", "DFS", "BFS", "Dynamic Programming", "Greedy", "Heap", "Stack", "Backtracking", "Bit Manipulation"). One name, not a sentence.
 
-- "recognition_clues": Clues from the PROBLEM SHAPE that should make someone reach for this pattern. 1-2 sentences. Do NOT name the pattern — this text is shown before the answer.
-
-- "core_insight": The key observation that unlocks the solution, independent of any implementation. 1-2 sentences.
+- "why_this_pattern": Why THIS problem is that pattern. Talk about the problem shape (what the input looks like, what you must find or optimize), not about code. 2-3 sentences. Do not recap the full statement.
 
 - "approach": Generic step-by-step algorithm, 3-5 short steps. No variable names, no language syntax, no "the user's solution".
-
-- "why_it_works": The invariant or reasoning that makes the approach correct. 1-3 sentences.
-
-- "complexity": One short paragraph covering time AND space Big-O with justification, e.g. "Time O(n) because each element is visited once. Space O(1) because only a few pointers are stored."
-
-- "common_mistakes": Likely mistakes or misconceptions for this pattern/problem. 1-3 sentences.
-
-- "transfer_question": One short question that tests whether the reader can tell when this same pattern would apply to a different problem.
-
-- "solver_note": One sentence on how THEIR code relates to the textbook approach, with no identifiers. Empty string if it is a standard implementation of this pattern. Example: "Your solution spends extra memory for a single pass."
 
 Hard rules:
 - Never mention identifiers, data-structure field names from the code, or "this implementation".
 - Prefer the standard textbook approach for this problem. Use the code only if it clearly selects among valid patterns.
-- Do not recap the problem statement; teach how to solve problems like this.
+- Do not recap the problem statement.
 
 Return clean JSON only, no markdown."""
 
-    raw = await _call_groq(prompt, max_tokens=1400)
+    raw = await _call_groq(prompt, max_tokens=800)
     fallback = "Approach not available. Set a valid Groq API key and resync."
     if not raw:
         return _empty_back(fallback)

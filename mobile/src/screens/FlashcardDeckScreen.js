@@ -21,7 +21,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import AppButton from '../components/AppButton';
 import StatusView from '../components/StatusView';
 import MasteredButton from '../components/MasteredButton';
-import { C, fonts, shuffle, studyOrder } from '../theme';
+import { C, fonts, studyOrder } from '../theme';
 
 const SWIPE_Y = 60;
 const HINT_KEY = '@leetplacards_gesture_hint_seen';
@@ -50,48 +50,14 @@ function GestureHint({ visible, onDismiss }) {
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onDismiss}>
       <Pressable style={styles.hintOverlay} onPress={onDismiss}>
         <View style={styles.hintCard}>
-          <Text style={styles.hintTitle}>Pattern hunt</Text>
-          <Text style={styles.hintLine}>Read the clues — name the pattern before you flip.</Text>
-          <Text style={styles.hintLine}>Swipe right to reveal. Tap transfer to test yourself.</Text>
-          <Text style={styles.hintLine}>Got it / Not yet grades the round. Swipe up for the next card.</Text>
-          <AppButton title="Let’s hunt" onPress={onDismiss} style={{ marginTop: 16 }} />
+          <Text style={styles.hintTitle}>How to study</Text>
+          <Text style={styles.hintLine}>Read the problem, then swipe right to flip.</Text>
+          <Text style={styles.hintLine}>The back names the pattern, why it fits, and the approach.</Text>
+          <Text style={styles.hintLine}>Swipe up or tap Next for the next card.</Text>
+          <AppButton title="Got it" onPress={onDismiss} style={{ marginTop: 16 }} />
         </View>
       </Pressable>
     </Modal>
-  );
-}
-
-function SessionDone({ stats, onAgain, onExit }) {
-  const recall =
-    stats.total > 0 ? Math.round((stats.got / stats.total) * 100) : 0;
-  const patternLine =
-    stats.patterns && stats.patterns.length
-      ? stats.patterns.slice(0, 6).join(' · ')
-      : null;
-  const headline =
-    recall >= 80 ? 'Sharp round' : recall >= 50 ? 'Nice hunt' : 'Warm-up done';
-  return (
-    <Screen>
-      <ScreenHeader title="Study" subtitle="Hunt complete" />
-      <View style={styles.center}>
-        <Text style={styles.sessionKicker}>{headline}</Text>
-        <Text style={styles.sessionTitle}>
-          {stats.got} of {stats.total} named
-        </Text>
-        <Text style={styles.sessionSub}>
-          {recall}% recall this round
-          {stats.mastered ? ` · ${stats.mastered} marked mastered` : ''}
-        </Text>
-        {patternLine ? (
-          <View style={styles.patternChipWrap}>
-            <Text style={styles.patternChipLabel}>Patterns this round</Text>
-            <Text style={styles.patternChipText}>{patternLine}</Text>
-          </View>
-        ) : null}
-        <AppButton title="Hunt 10 more" onPress={onAgain} style={styles.blockBtn} />
-        <AppButton title="Back to full deck" variant="ghost" onPress={onExit} />
-      </View>
-    </Screen>
   );
 }
 
@@ -104,28 +70,14 @@ export default function FlashcardDeckScreen({ navigation }) {
   const [idx, setIdx] = useState(0);
   const [codeVisible, setCodeVisible] = useState(false);
   const [resyncProgress, setResyncProgress] = useState(null);
-  const [hideMastered, setHideMastered] = useState(false);
-  const [sessionMode, setSessionMode] = useState(false);
-  const [sessionDone, setSessionDone] = useState(null);
   const [showHint, setShowHint] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pollRef = useRef(null);
-  const hitsRef = useRef({ got: new Set(), miss: new Set() });
 
-  const rebuildDeck = useCallback(
-    (source, hide, session) => {
-      let deck = studyOrder(source, { hideMastered: hide });
-      if (session) {
-        deck = shuffle(source.filter((c) => !c.mastered)).slice(0, 10);
-        if (deck.length === 0) deck = shuffle(source).slice(0, Math.min(10, source.length));
-      }
-      setCards(deck);
-      setIdx(0);
-      setSessionDone(null);
-      if (session) hitsRef.current = { got: new Set(), miss: new Set() };
-    },
-    []
-  );
+  const rebuildDeck = useCallback((source) => {
+    setCards(studyOrder(source));
+    setIdx(0);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,13 +85,13 @@ export default function FlashcardDeckScreen({ navigation }) {
     try {
       const data = await fetchPlacards(true);
       setAllCards(data);
-      rebuildDeck(data, hideMastered, sessionMode);
+      rebuildDeck(data);
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [hideMastered, sessionMode, rebuildDeck]);
+  }, [rebuildDeck]);
 
   useEffect(() => {
     load();
@@ -227,39 +179,10 @@ export default function FlashcardDeckScreen({ navigation }) {
     [slideAnim]
   );
 
-  const finishSession = useCallback(() => {
-    const patterns = [
-      ...new Set(cards.map((c) => c.pattern).filter((p) => p && p !== '—')),
-    ];
-    setSessionDone({
-      total: cards.length,
-      mastered: cards.filter((c) => c.mastered).length,
-      got: hitsRef.current.got.size,
-      patterns,
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, [cards]);
-
   const next = useCallback(() => {
-    if (idx >= total - 1) {
-      if (sessionMode) finishSession();
-      return;
-    }
+    if (idx >= total - 1) return;
     slideTo(idx + 1, 'up');
-  }, [idx, total, slideTo, sessionMode, finishSession]);
-
-  const handleGotIt = useCallback(() => {
-    if (!card) return;
-    hitsRef.current.got.add(card.id);
-    hitsRef.current.miss.delete(card.id);
-    next();
-  }, [card, next]);
-
-  const handleNotYet = useCallback(() => {
-    if (!card) return;
-    hitsRef.current.miss.add(card.id);
-    hitsRef.current.got.delete(card.id);
-  }, [card]);
+  }, [idx, total, slideTo]);
 
   const prev = useCallback(() => {
     if (idx > 0) slideTo(idx - 1, 'down');
@@ -267,12 +190,10 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   const nextRef = useRef(next);
   const prevRef = useRef(prev);
-  const sessionRef = useRef(sessionMode);
   useEffect(() => {
     nextRef.current = next;
     prevRef.current = prev;
-    sessionRef.current = sessionMode;
-  }, [next, prev, sessionMode]);
+  }, [next, prev]);
 
   const deckPan = useRef(
     PanResponder.create({
@@ -284,7 +205,6 @@ export default function FlashcardDeckScreen({ navigation }) {
         const t = totalRef.current;
         if (g.dy < -SWIPE_Y && ci < t - 1) nextRef.current();
         else if (g.dy > SWIPE_Y && ci > 0) prevRef.current();
-        else if (g.dy < -SWIPE_Y && ci >= t - 1 && sessionRef.current) nextRef.current();
       },
     })
   ).current;
@@ -301,36 +221,6 @@ export default function FlashcardDeckScreen({ navigation }) {
       setCards((p) => p.map((c, i) => (i === idx ? { ...c, mastered: res.mastered } : c)));
       setAllCards((p) => p.map((c) => (c.id === card.id ? { ...c, mastered: res.mastered } : c)));
     } catch (_) {}
-  };
-
-  const toggleHideMastered = () => {
-    const nextHide = !hideMastered;
-    setHideMastered(nextHide);
-    setSessionMode(false);
-    rebuildDeck(allCards, nextHide, false);
-  };
-
-  const startSession = () => {
-    const unmastered = allCards.filter((c) => !c.mastered);
-    if (allCards.length === 0) return;
-    if (unmastered.length === 0) {
-      Alert.alert('All mastered', 'Every card is marked mastered. Shuffle the full deck instead?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Study 10 anyway',
-          onPress: () => {
-            setSessionMode(true);
-            setHideMastered(false);
-            rebuildDeck(allCards, false, true);
-          },
-        },
-      ]);
-      return;
-    }
-    setSessionMode(true);
-    setHideMastered(false);
-    rebuildDeck(allCards, false, true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
 
   const handleResync = (force = false) => {
@@ -366,31 +256,36 @@ export default function FlashcardDeckScreen({ navigation }) {
     ]);
   };
 
-  const headerLogout = (
-    <TouchableOpacity
-      onPress={() => {
-        Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Log out',
-            style: 'destructive',
-            onPress: async () => {
-              setAuthToken(null);
-              await logout();
+  const headerRight = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <TouchableOpacity onPress={() => navigation.navigate('ConnectRepo')} hitSlop={8}>
+        <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 }}>Change repo</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => {
+          Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Log out',
+              style: 'destructive',
+              onPress: async () => {
+                setAuthToken(null);
+                await logout();
+              },
             },
-          },
-        ]);
-      }}
-      hitSlop={8}
-    >
-      <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 }}>Log out</Text>
-    </TouchableOpacity>
+          ]);
+        }}
+        hitSlop={8}
+      >
+        <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 }}>Log out</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   if (loading) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="Loading" right={headerLogout} />
+        <ScreenHeader title="Study" subtitle="Loading" right={headerRight} />
         <StatusView loading message="Loading your deck…" />
       </Screen>
     );
@@ -398,41 +293,19 @@ export default function FlashcardDeckScreen({ navigation }) {
   if (error) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="Couldn’t load" right={headerLogout} />
+        <ScreenHeader title="Study" subtitle="Couldn’t load" right={headerRight} />
         <StatusView error={error} onRetry={load} />
       </Screen>
-    );
-  }
-
-  if (sessionDone) {
-    return (
-      <SessionDone
-        stats={sessionDone}
-        onAgain={() => {
-          setSessionMode(true);
-          rebuildDeck(allCards, false, true);
-        }}
-        onExit={() => {
-          setSessionMode(false);
-          rebuildDeck(allCards, hideMastered, false);
-        }}
-      />
     );
   }
 
   if (!card) {
     return (
       <Screen>
-        <ScreenHeader title="Study" subtitle="0 cards" right={headerLogout} />
+        <ScreenHeader title="Study" subtitle="0 cards" right={headerRight} />
         <StatusView
-          title={hideMastered ? 'No unmastered cards' : 'No cards yet'}
-          message={
-            hideMastered
-              ? 'Turn off Hide mastered, or push more solutions.'
-              : 'Push LeetCode solutions to your connected repo.'
-          }
-          actionLabel={hideMastered ? 'Show all cards' : undefined}
-          onAction={hideMastered ? toggleHideMastered : undefined}
+          title="No cards yet"
+          message="Push LeetCode solutions to your connected repo."
         />
       </Screen>
     );
@@ -449,12 +322,8 @@ export default function FlashcardDeckScreen({ navigation }) {
 
       <ScreenHeader
         title="Study"
-        subtitle={
-          sessionMode
-            ? `Hunt ${idx + 1} of ${total}`
-            : `${idx + 1} of ${total} · ${masteredCount} mastered`
-        }
-        right={headerLogout}
+        subtitle={`${idx + 1} of ${total} · ${masteredCount} mastered`}
+        right={headerRight}
       />
 
       <View style={styles.progressTrack}>
@@ -469,8 +338,6 @@ export default function FlashcardDeckScreen({ navigation }) {
         <FlipCard
           card={card}
           onShowCode={() => setCodeVisible(true)}
-          onGotIt={handleGotIt}
-          onNotYet={handleNotYet}
         />
       </Animated.View>
 
@@ -485,41 +352,21 @@ export default function FlashcardDeckScreen({ navigation }) {
           </TouchableOpacity>
           <MasteredButton mastered={card.mastered} onPress={handleMastered} style={styles.masteredWrap} />
           <TouchableOpacity
-            style={[styles.navBtn, idx >= total - 1 && !sessionMode && styles.dim]}
+            style={[styles.navBtn, idx >= total - 1 && styles.dim]}
             onPress={next}
-            disabled={idx >= total - 1 && !sessionMode}
+            disabled={idx >= total - 1}
           >
-            <Text style={styles.navLabel}>{idx >= total - 1 && sessionMode ? 'Finish' : 'Next ›'}</Text>
+            <Text style={styles.navLabel}>Next ›</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.actRow}>
           <TouchableOpacity
-            style={[styles.actBtn, sessionMode && styles.actBtnOn]}
-            onPress={startSession}
-          >
-            <Text style={[styles.actLabel, sessionMode && styles.actLabelOn]}>Hunt 10</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actBtn, hideMastered && styles.actBtnOn]}
-            onPress={toggleHideMastered}
-          >
-            <Text style={[styles.actLabel, hideMastered && styles.actLabelOn]}>
-              {hideMastered ? 'Show all' : 'Hide mastered'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={styles.actBtn}
-            onPress={() => {
-              setSessionMode(false);
-              rebuildDeck(allCards, hideMastered, false);
-            }}
+            onPress={() => rebuildDeck(allCards)}
           >
             <Text style={styles.actLabel}>Shuffle</Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.actRow}>
           <TouchableOpacity
             style={[styles.actBtn, isResyncing && { opacity: 0.5 }]}
             onPress={() => handleResync(false)}
@@ -541,63 +388,6 @@ export default function FlashcardDeckScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  sessionKicker: {
-    fontSize: 12,
-    fontFamily: fonts.bold,
-    color: C.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.6,
-    marginBottom: 8,
-  },
-  sessionTitle: {
-    fontSize: 28,
-    fontFamily: fonts.bold,
-    color: C.dark,
-    marginBottom: 8,
-    textAlign: 'center',
-    letterSpacing: -0.4,
-  },
-  sessionSub: {
-    fontSize: 15,
-    fontFamily: fonts.regular,
-    color: C.mid,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 22,
-  },
-  patternChipWrap: {
-    backgroundColor: C.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 14,
-    marginBottom: 24,
-    width: '100%',
-    maxWidth: 320,
-  },
-  patternChipLabel: {
-    fontSize: 11,
-    fontFamily: fonts.bold,
-    color: C.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  patternChipText: {
-    fontSize: 14,
-    fontFamily: fonts.medium,
-    color: C.dark,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  blockBtn: { minWidth: 180, marginBottom: 8 },
   masteredWrap: { flex: 1 },
 
   progressTrack: {
@@ -656,18 +446,6 @@ const styles = StyleSheet.create({
   },
   navLabel: { color: C.dark, fontFamily: fonts.semiBold, fontSize: 13 },
   dim: { opacity: 0.3 },
-  masteredBtn: {
-    flex: 1,
-    backgroundColor: C.white,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  masteredBtnOn: { backgroundColor: C.successBg, borderColor: C.success },
-  masteredLabel: { color: C.mid, fontFamily: fonts.semiBold, fontSize: 13 },
-  masteredLabelOn: { color: C.success },
   actRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -681,9 +459,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: C.primarySoft,
   },
-  actBtnOn: { backgroundColor: C.primary },
   actLabel: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 12 },
-  actLabelOn: { color: C.white },
 
   hintOverlay: {
     flex: 1,
@@ -713,12 +489,4 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     marginBottom: 4,
   },
-  hintBtn: {
-    marginTop: 20,
-    backgroundColor: C.primary,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  hintBtnText: { color: C.white, fontFamily: fonts.semiBold, fontSize: 15 },
 });
