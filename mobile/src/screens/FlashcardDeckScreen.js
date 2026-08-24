@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   Animated,
   PanResponder,
@@ -16,6 +15,11 @@ import * as Haptics from 'expo-haptics';
 import { fetchPlacards, toggleMastered, resyncCards, getResyncStatus, syncNow } from '../api';
 import FlipCard from '../components/FlipCard';
 import CodeModal from '../components/CodeModal';
+import Screen from '../components/Screen';
+import ScreenHeader from '../components/ScreenHeader';
+import AppButton from '../components/AppButton';
+import StatusView from '../components/StatusView';
+import MasteredButton from '../components/MasteredButton';
 import { C, fonts, shuffle, studyOrder } from '../theme';
 
 const SWIPE_Y = 60;
@@ -45,13 +49,11 @@ function GestureHint({ visible, onDismiss }) {
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onDismiss}>
       <Pressable style={styles.hintOverlay} onPress={onDismiss}>
         <View style={styles.hintCard}>
-          <Text style={styles.hintTitle}>How to study</Text>
-          <Text style={styles.hintLine}>↔  Swipe right / left to flip</Text>
-          <Text style={styles.hintLine}>↕  Swipe up / down for next card</Text>
-          <Text style={styles.hintLine}>✓  Mark mastered when you know it</Text>
-          <TouchableOpacity style={styles.hintBtn} onPress={onDismiss} activeOpacity={0.8}>
-            <Text style={styles.hintBtnText}>Got it</Text>
-          </TouchableOpacity>
+          <Text style={styles.hintTitle}>Pattern hunt</Text>
+          <Text style={styles.hintLine}>Read the clues — name the pattern before you flip.</Text>
+          <Text style={styles.hintLine}>Swipe right to reveal. Tap transfer to test yourself.</Text>
+          <Text style={styles.hintLine}>Got it / Not yet grades the round. Swipe up for the next card.</Text>
+          <AppButton title="Let’s hunt" onPress={onDismiss} style={{ marginTop: 16 }} />
         </View>
       </Pressable>
     </Modal>
@@ -59,20 +61,36 @@ function GestureHint({ visible, onDismiss }) {
 }
 
 function SessionDone({ stats, onAgain, onExit }) {
+  const recall =
+    stats.total > 0 ? Math.round((stats.got / stats.total) * 100) : 0;
+  const patternLine =
+    stats.patterns && stats.patterns.length
+      ? stats.patterns.slice(0, 6).join(' · ')
+      : null;
+  const headline =
+    recall >= 80 ? 'Sharp round' : recall >= 50 ? 'Nice hunt' : 'Warm-up done';
   return (
-    <View style={styles.center}>
-      <Text style={styles.sessionEmoji}>Done</Text>
-      <Text style={styles.sessionTitle}>Session complete</Text>
-      <Text style={styles.sessionSub}>
-        Reviewed {stats.total} cards · marked {stats.mastered} mastered
-      </Text>
-      <TouchableOpacity style={styles.pillBtn} onPress={onAgain} activeOpacity={0.8}>
-        <Text style={styles.pillBtnText}>Study again</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.linkBtn} onPress={onExit}>
-        <Text style={styles.linkBtnText}>Back to full deck</Text>
-      </TouchableOpacity>
-    </View>
+    <Screen>
+      <ScreenHeader title="Study" subtitle="Hunt complete" />
+      <View style={styles.center}>
+        <Text style={styles.sessionKicker}>{headline}</Text>
+        <Text style={styles.sessionTitle}>
+          {stats.got} of {stats.total} named
+        </Text>
+        <Text style={styles.sessionSub}>
+          {recall}% recall this round
+          {stats.mastered ? ` · ${stats.mastered} marked mastered` : ''}
+        </Text>
+        {patternLine ? (
+          <View style={styles.patternChipWrap}>
+            <Text style={styles.patternChipLabel}>Patterns this round</Text>
+            <Text style={styles.patternChipText}>{patternLine}</Text>
+          </View>
+        ) : null}
+        <AppButton title="Hunt 10 more" onPress={onAgain} style={styles.blockBtn} />
+        <AppButton title="Back to full deck" variant="ghost" onPress={onExit} />
+      </View>
+    </Screen>
   );
 }
 
@@ -90,6 +108,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   const [showHint, setShowHint] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pollRef = useRef(null);
+  const hitsRef = useRef({ got: new Set(), miss: new Set() });
 
   const rebuildDeck = useCallback(
     (source, hide, session) => {
@@ -101,6 +120,7 @@ export default function FlashcardDeckScreen({ navigation }) {
       setCards(deck);
       setIdx(0);
       setSessionDone(null);
+      if (session) hitsRef.current = { got: new Set(), miss: new Set() };
     },
     []
   );
@@ -205,17 +225,39 @@ export default function FlashcardDeckScreen({ navigation }) {
     [slideAnim]
   );
 
+  const finishSession = useCallback(() => {
+    const patterns = [
+      ...new Set(cards.map((c) => c.pattern).filter((p) => p && p !== '—')),
+    ];
+    setSessionDone({
+      total: cards.length,
+      mastered: cards.filter((c) => c.mastered).length,
+      got: hitsRef.current.got.size,
+      patterns,
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+  }, [cards]);
+
   const next = useCallback(() => {
     if (idx >= total - 1) {
-      if (sessionMode) {
-        const mastered = cards.filter((c) => c.mastered).length;
-        setSessionDone({ total: cards.length, mastered });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      }
+      if (sessionMode) finishSession();
       return;
     }
     slideTo(idx + 1, 'up');
-  }, [idx, total, slideTo, sessionMode, cards]);
+  }, [idx, total, slideTo, sessionMode, finishSession]);
+
+  const handleGotIt = useCallback(() => {
+    if (!card) return;
+    hitsRef.current.got.add(card.id);
+    hitsRef.current.miss.delete(card.id);
+    next();
+  }, [card, next]);
+
+  const handleNotYet = useCallback(() => {
+    if (!card) return;
+    hitsRef.current.miss.add(card.id);
+    hitsRef.current.got.delete(card.id);
+  }, [card]);
 
   const prev = useCallback(() => {
     if (idx > 0) slideTo(idx - 1, 'down');
@@ -324,20 +366,18 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={C.primary} />
-        <Text style={styles.centerText}>Loading your deck...</Text>
-      </View>
+      <Screen>
+        <ScreenHeader title="Study" subtitle="Loading" />
+        <StatusView loading message="Loading your deck…" />
+      </Screen>
     );
   }
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={[styles.centerText, { color: C.hard, marginBottom: 16 }]}>{error}</Text>
-        <TouchableOpacity style={styles.pillBtn} onPress={load}>
-          <Text style={styles.pillBtnText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen>
+        <ScreenHeader title="Study" subtitle="Couldn’t load" />
+        <StatusView error={error} onRetry={load} />
+      </Screen>
     );
   }
 
@@ -359,21 +399,19 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   if (!card) {
     return (
-      <View style={styles.center}>
-        <Text style={[styles.centerText, { fontSize: 18, fontFamily: fonts.bold, color: C.dark }]}>
-          {hideMastered ? 'No unmastered cards' : 'No Cards Yet'}
-        </Text>
-        <Text style={[styles.centerText, { marginTop: 4 }]}>
-          {hideMastered
-            ? 'Turn off “Hide mastered” or push more solutions.'
-            : 'Push LeetCode solutions to your connected repo.'}
-        </Text>
-        {hideMastered ? (
-          <TouchableOpacity style={[styles.pillBtn, { marginTop: 20 }]} onPress={toggleHideMastered}>
-            <Text style={styles.pillBtnText}>Show all cards</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      <Screen>
+        <ScreenHeader title="Study" subtitle="0 cards" />
+        <StatusView
+          title={hideMastered ? 'No unmastered cards' : 'No cards yet'}
+          message={
+            hideMastered
+              ? 'Turn off Hide mastered, or push more solutions.'
+              : 'Push LeetCode solutions to your connected repo.'
+          }
+          actionLabel={hideMastered ? 'Show all cards' : undefined}
+          onAction={hideMastered ? toggleHideMastered : undefined}
+        />
+      </Screen>
     );
   }
 
@@ -382,26 +420,18 @@ export default function FlashcardDeckScreen({ navigation }) {
   const masteredCount = allCards.filter((c) => c.mastered).length;
 
   return (
-    <View style={styles.root} {...deckPan.panHandlers}>
+    <Screen {...deckPan.panHandlers}>
       <GestureHint visible={showHint} onDismiss={dismissHint} />
       <CodeModal visible={codeVisible} code={card.code} onClose={() => setCodeVisible(false)} />
 
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.appName}>LeetPlacards</Text>
-          <Text style={styles.counter}>
-            {sessionMode ? `Session ${idx + 1}/${total}` : `${idx + 1} / ${total}`}
-            {!sessionMode ? ` · ${masteredCount} mastered` : ''}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.menuBtn}
-          onPress={() => navigation.navigate('PlacardList')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.menuIcon}>☰</Text>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Study"
+        subtitle={
+          sessionMode
+            ? `Hunt ${idx + 1} of ${total}`
+            : `${idx + 1} of ${total} · ${masteredCount} mastered`
+        }
+      />
 
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
@@ -412,7 +442,12 @@ export default function FlashcardDeckScreen({ navigation }) {
       <Animated.View
         style={[styles.deck, { transform: [{ translateY: slideAnim }] }]}
       >
-        <FlipCard card={card} onShowCode={() => setCodeVisible(true)} />
+        <FlipCard
+          card={card}
+          onShowCode={() => setCodeVisible(true)}
+          onGotIt={handleGotIt}
+          onNotYet={handleNotYet}
+        />
       </Animated.View>
 
       <View style={styles.controls}>
@@ -424,14 +459,7 @@ export default function FlashcardDeckScreen({ navigation }) {
           >
             <Text style={styles.navLabel}>‹ Prev</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.masteredBtn, card.mastered && styles.masteredBtnOn]}
-            onPress={handleMastered}
-          >
-            <Text style={[styles.masteredLabel, card.mastered && styles.masteredLabelOn]}>
-              {card.mastered ? '✓ Mastered' : 'Mark Mastered'}
-            </Text>
-          </TouchableOpacity>
+          <MasteredButton mastered={card.mastered} onPress={handleMastered} style={styles.masteredWrap} />
           <TouchableOpacity
             style={[styles.navBtn, idx >= total - 1 && !sessionMode && styles.dim]}
             onPress={next}
@@ -446,7 +474,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             style={[styles.actBtn, sessionMode && styles.actBtnOn]}
             onPress={startSession}
           >
-            <Text style={[styles.actLabel, sessionMode && styles.actLabelOn]}>Study 10</Text>
+            <Text style={[styles.actLabel, sessionMode && styles.actLabelOn]}>Hunt 10</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actBtn, hideMastered && styles.actBtnOn]}
@@ -484,88 +512,69 @@ export default function FlashcardDeckScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg, paddingTop: 50 },
   center: {
     flex: 1,
-    backgroundColor: C.bg,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
   },
-  centerText: {
-    color: C.mid,
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 22,
-    fontFamily: fonts.regular,
-  },
-  pillBtn: {
-    backgroundColor: C.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  pillBtnText: { color: C.white, fontFamily: fonts.semiBold, fontSize: 14 },
-  linkBtn: { marginTop: 16, padding: 8 },
-  linkBtnText: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 },
-  sessionEmoji: {
-    fontSize: 14,
+  sessionKicker: {
+    fontSize: 12,
     fontFamily: fonts.bold,
     color: C.primary,
     textTransform: 'uppercase',
-    letterSpacing: 2,
+    letterSpacing: 1.6,
     marginBottom: 8,
   },
   sessionTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontFamily: fonts.bold,
     color: C.dark,
     marginBottom: 8,
+    textAlign: 'center',
+    letterSpacing: -0.4,
   },
   sessionSub: {
     fontSize: 15,
     fontFamily: fonts.regular,
     color: C.mid,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 22,
   },
-
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 4,
-  },
-  appName: {
-    fontSize: 20,
-    fontFamily: fonts.bold,
-    color: C.dark,
-    letterSpacing: -0.3,
-  },
-  counter: { fontSize: 12, color: C.light, marginTop: 1, fontFamily: fonts.medium },
-  menuBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  patternChipWrap: {
     backgroundColor: C.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    marginBottom: 24,
+    width: '100%',
+    maxWidth: 320,
   },
-  menuIcon: { fontSize: 16, color: C.mid },
+  patternChipLabel: {
+    fontSize: 11,
+    fontFamily: fonts.bold,
+    color: C.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  patternChipText: {
+    fontSize: 14,
+    fontFamily: fonts.medium,
+    color: C.dark,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  blockBtn: { minWidth: 180, marginBottom: 8 },
+  masteredWrap: { flex: 1 },
 
   progressTrack: {
     height: 3,

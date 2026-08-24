@@ -130,6 +130,12 @@ async def upsert_placard(
     time_complexity: str,
     space_complexity: str,
     code: str,
+    recognition_clues: str = "",
+    core_insight: str = "",
+    why_it_works: str = "",
+    complexity: str = "",
+    common_mistakes: str = "",
+    transfer_question: str = "",
 ) -> UUID:
     async with get_conn() as conn:
         row = await conn.fetchrow(
@@ -137,8 +143,13 @@ async def upsert_placard(
             INSERT INTO placards (
                 user_id, problem_name, github_file_path, difficulty, pattern,
                 description, example, summary, approach,
-                time_complexity, space_complexity, code
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                time_complexity, space_complexity, code,
+                recognition_clues, core_insight, why_it_works,
+                complexity, common_mistakes, transfer_question
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14, $15, $16, $17, $18
+            )
             ON CONFLICT (user_id, github_file_path)
             DO UPDATE SET
                 problem_name = EXCLUDED.problem_name,
@@ -150,13 +161,21 @@ async def upsert_placard(
                 approach = EXCLUDED.approach,
                 time_complexity = EXCLUDED.time_complexity,
                 space_complexity = EXCLUDED.space_complexity,
-                code = EXCLUDED.code
+                code = EXCLUDED.code,
+                recognition_clues = EXCLUDED.recognition_clues,
+                core_insight = EXCLUDED.core_insight,
+                why_it_works = EXCLUDED.why_it_works,
+                complexity = EXCLUDED.complexity,
+                common_mistakes = EXCLUDED.common_mistakes,
+                transfer_question = EXCLUDED.transfer_question
             RETURNING id
             """,
             user_id, problem_name, github_file_path,
             difficulty or "Medium", pattern or None, description or None,
             example or None, summary or None, approach or None,
             time_complexity or None, space_complexity or None, code or None,
+            recognition_clues or None, core_insight or None, why_it_works or None,
+            complexity or None, common_mistakes or None, transfer_question or None,
         )
         return row["id"]
 
@@ -201,6 +220,12 @@ async def _process_one(
         time_complexity=placard.get("time_complexity") or "",
         space_complexity=placard.get("space_complexity") or "",
         code=placard.get("code") or "",
+        recognition_clues=placard.get("recognition_clues") or "",
+        core_insight=placard.get("core_insight") or "",
+        why_it_works=placard.get("why_it_works") or "",
+        complexity=placard.get("complexity") or "",
+        common_mistakes=placard.get("common_mistakes") or "",
+        transfer_question=placard.get("transfer_question") or "",
     )
     return True
 
@@ -430,7 +455,9 @@ async def full_resync_background(user_id: UUID) -> None:
 _FULL_SELECT = """
     SELECT id, problem_name, github_file_path, difficulty, pattern,
            description, example, summary, approach,
-           time_complexity, space_complexity, code, mastered, created_at
+           time_complexity, space_complexity, code, mastered, created_at,
+           recognition_clues, core_insight, why_it_works,
+           complexity, common_mistakes, transfer_question
     FROM placards
 """
 

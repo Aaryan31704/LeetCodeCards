@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS placards (
     approach TEXT,
     time_complexity TEXT,
     space_complexity TEXT,
+    recognition_clues TEXT DEFAULT '',
+    core_insight TEXT DEFAULT '',
+    why_it_works TEXT DEFAULT '',
+    complexity TEXT DEFAULT '',
+    common_mistakes TEXT DEFAULT '',
+    transfer_question TEXT DEFAULT '',
     code TEXT,
     mastered BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

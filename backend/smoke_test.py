@@ -22,7 +22,13 @@ from app.config import get_settings  # noqa: E402
 from app.routes.auth import _build_redirect, _decode_state, _encode_state  # noqa: E402
 from app.routes.webhooks import _verify_signature  # noqa: E402
 from app.github_service import _is_leetcode_file  # noqa: E402
-from app.llm_service import _extract_problem_name_from_path, _parse_json  # noqa: E402
+from app.llm_service import (
+    _extract_problem_name_from_path,
+    _parse_json,
+    _split_complexity,
+    _compose_approach,
+    _normalize_back,
+)  # noqa: E402
 from app.leetcode_service import extract_slug_from_path  # noqa: E402
 
 passed, failed = 0, 0
@@ -195,6 +201,50 @@ check("plain json", _parse_json('{"a": 1}') == {"a": 1})
 check("fenced json", _parse_json('```json\n{"a": 1}\n```') == {"a": 1})
 check("bare fence", _parse_json('```\n{"a": 1}\n```') == {"a": 1})
 check("invalid json returns None", _parse_json("not json at all") is None)
+
+print("\n== Pattern-first back-card helpers ==")
+check(
+    "complexity splits time and space",
+    _split_complexity("Time O(n) because we scan once. Space O(1) because only pointers.")
+    == ("O(n)", "O(1)"),
+)
+check(
+    "complexity with n log n",
+    _split_complexity("time O(n log n); space O(n)") == ("O(n log n)", "O(n)"),
+)
+composed = _compose_approach({
+    "core_insight": "Sorted input lets two pointers meet in linear time.",
+    "approach": "Start at both ends and move the pointer on the side that cannot be part of the answer.",
+    "why_it_works": "The discarded side is provably too small or too large.",
+    "recognition_clues": "Sorted array plus a pair/sum condition.",
+    "common_mistakes": "Forgetting to skip duplicates.",
+    "transfer_question": "Would this apply to finding a triplet sum?",
+})
+check("composed approach includes insight", "Sorted input lets two pointers" in composed)
+check("composed approach includes transfer", "Transfer:" in composed)
+check("composed approach includes recognition", "Recognize this when:" in composed)
+
+normalized = _normalize_back(
+    {
+        "pattern": "Two Pointers",
+        "recognition_clues": "Two Pointers shines on sorted arrays with a pair condition.",
+        "core_insight": "Sorted input lets two pointers meet in linear time.",
+        "approach": "Start at both ends and move the pointer that cannot contribute.",
+        "why_it_works": "The discarded side is provably too small or too large.",
+        "complexity": "Time O(n) because each element is visited once. Space O(1) because only pointers.",
+        "common_mistakes": "Forgetting to skip duplicates.",
+        "transfer_question": "Would this apply to finding a triplet sum?",
+        "solver_note": "Your solution spends extra memory for a single pass.",
+    },
+    "fallback",
+)
+check("normalize keeps steps only", normalized["approach"].startswith("Start at both ends"))
+check("normalize does not dump transfer into approach", "Transfer:" not in normalized["approach"])
+check("normalize keeps transfer separate", "triplet" in normalized["transfer_question"])
+check("normalize maps solver_note to summary", "extra memory" in normalized["summary"])
+check("normalize splits complexity badges", normalized["time_complexity"] == "O(n)")
+check("normalize strips pattern leak from clues", "Two Pointers" not in normalized["recognition_clues"])
+check("empty parse uses fallback", _normalize_back(None, "nope")["approach"] == "nope")
 
 print("\n== Stale resync detection ==")
 import time  # noqa: E402

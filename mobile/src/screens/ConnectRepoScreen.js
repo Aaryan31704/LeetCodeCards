@@ -3,9 +3,7 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,7 +11,10 @@ import {
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { connectRepo, setAuthToken } from '../api';
-import { C, fonts } from '../theme';
+import { C, fonts, radius } from '../theme';
+import Screen from '../components/Screen';
+import ScreenHeader from '../components/ScreenHeader';
+import AppButton from '../components/AppButton';
 
 export default function ConnectRepoScreen({ navigation }) {
   const { token, user, refreshUser } = useAuth();
@@ -61,113 +62,100 @@ export default function ConnectRepoScreen({ navigation }) {
 
   if (hasRepo) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.connected}>
-          Connected: {user.repo_owner}/{user.repo_name}
-        </Text>
-        <Text style={styles.hint}>Placards sync when you push. Pull to refresh the list.</Text>
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => navigation.navigate('FlashcardDeck')}
-        >
-          <Text style={styles.buttonText}>Open deck</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen bottomInset>
+        <ScreenHeader
+          title="Connected"
+          subtitle={`${user.repo_owner}/${user.repo_name}`}
+        />
+        <View style={styles.body}>
+          <Text style={styles.hint}>Placards sync when you push. Pull to refresh the list.</Text>
+          <AppButton
+            title="Open deck"
+            onPress={() => navigation.navigate('MainTabs')}
+          />
+        </View>
+      </Screen>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+    <Screen bottomInset>
+      <ScreenHeader
+        title="Connect repo"
+        subtitle="Link the GitHub repo where you push solutions"
+      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.title}>Connect your LeetCode repo</Text>
-        <Text style={styles.hint}>
-          Repository where you push solutions (e.g. with LeetHub). We’ll create a webhook so new
-          pushes become placards automatically.
-        </Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Owner (e.g. your-username)"
-          placeholderTextColor={C.light}
-          value={owner}
-          onChangeText={(t) => {
-            setOwner(t);
-            setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Repo name (e.g. leetcode-problems)"
-          placeholderTextColor={C.light}
-          value={repo}
-          onChangeText={(t) => {
-            setRepo(t);
-            setError(null);
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Path prefix (default: LeetCode)"
-          placeholderTextColor={C.light}
-          value={prefix}
-          onChangeText={setPrefix}
-          autoCapitalize="none"
-        />
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        <TouchableOpacity
-          style={[styles.button, submitting && styles.buttonDisabled]}
-          onPress={handleConnect}
-          disabled={submitting}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
         >
-          {submitting ? (
-            <ActivityIndicator color={C.white} />
-          ) : (
-            <Text style={styles.buttonText}>Connect repo & sync</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <Text style={styles.hint}>
+            We’ll create a webhook so new pushes become placards automatically (e.g. LeetHub).
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Owner (e.g. your-username)"
+            placeholderTextColor={C.light}
+            value={owner}
+            onChangeText={(t) => {
+              setOwner(t);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Repo name (e.g. leetcode-problems)"
+            placeholderTextColor={C.light}
+            value={repo}
+            onChangeText={(t) => {
+              setRepo(t);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Path prefix (default: LeetCode)"
+            placeholderTextColor={C.light}
+            value={prefix}
+            onChangeText={setPrefix}
+            autoCapitalize="none"
+          />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <AppButton
+            title="Connect repo & sync"
+            onPress={handleConnect}
+            loading={submitting}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  scrollContent: { padding: 24, paddingBottom: 48 },
-  title: {
-    fontSize: 24,
-    fontFamily: fonts.bold,
-    color: C.dark,
-    marginBottom: 12,
-  },
+  flex: { flex: 1 },
+  body: { paddingHorizontal: 20, paddingTop: 8 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
   hint: {
     color: C.mid,
     fontSize: 15,
-    marginBottom: 24,
+    marginBottom: 20,
     lineHeight: 22,
     fontFamily: fonts.regular,
   },
-  connected: {
-    fontSize: 17,
-    color: C.primary,
-    marginBottom: 8,
-    marginTop: 40,
-    marginHorizontal: 24,
-    fontFamily: fonts.semiBold,
-  },
   input: {
     backgroundColor: C.white,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 15,
     color: C.dark,
     marginBottom: 12,
     borderWidth: 1,
@@ -180,14 +168,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.medium,
   },
-  button: {
-    backgroundColor: C.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-    marginHorizontal: 24,
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: C.white, fontSize: 17, fontFamily: fonts.semiBold },
 });

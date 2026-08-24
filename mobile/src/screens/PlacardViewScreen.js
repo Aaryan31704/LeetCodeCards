@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  TouchableOpacity,
-} from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { fetchPlacardById, toggleMastered } from '../api';
 import FlipCard from '../components/FlipCard';
 import CodeModal from '../components/CodeModal';
-import { C, fonts } from '../theme';
+import Screen from '../components/Screen';
+import ScreenHeader from '../components/ScreenHeader';
+import StatusView from '../components/StatusView';
+import MasteredButton from '../components/MasteredButton';
 import * as Haptics from 'expo-haptics';
 
 export default function PlacardViewScreen({ route, navigation }) {
@@ -23,10 +20,7 @@ export default function PlacardViewScreen({ route, navigation }) {
     (async () => {
       try {
         const data = await fetchPlacardById(placardId);
-        if (!cancelled) {
-          setPlacard(data);
-          navigation.setOptions({ title: data.problem_name || 'Placard' });
-        }
+        if (!cancelled) setPlacard(data);
       } catch (_) {
         if (!cancelled) setPlacard(null);
       } finally {
@@ -36,7 +30,7 @@ export default function PlacardViewScreen({ route, navigation }) {
     return () => {
       cancelled = true;
     };
-  }, [placardId, navigation]);
+  }, [placardId]);
 
   const handleMastered = async () => {
     if (!placard) return;
@@ -53,26 +47,33 @@ export default function PlacardViewScreen({ route, navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={C.primary} />
-      </View>
+      <Screen bottomInset>
+        <ScreenHeader title="Card" onBack={() => navigation.goBack()} />
+        <StatusView loading />
+      </Screen>
     );
   }
 
   if (!placard) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>Placard not found</Text>
-      </View>
+      <Screen bottomInset>
+        <ScreenHeader title="Card" onBack={() => navigation.goBack()} />
+        <StatusView error="Placard not found" onRetry={() => navigation.goBack()} retryLabel="Go back" />
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <Screen bottomInset>
       <CodeModal
         visible={codeVisible}
         code={placard.code}
         onClose={() => setCodeVisible(false)}
+      />
+      <ScreenHeader
+        title={placard.problem_name || 'Card'}
+        subtitle="Flip to hunt the pattern"
+        onBack={() => navigation.goBack()}
       />
       <View style={styles.deck}>
         <FlipCard
@@ -81,44 +82,14 @@ export default function PlacardViewScreen({ route, navigation }) {
           compact
         />
       </View>
-      <TouchableOpacity
-        style={[styles.masteredBtn, placard.mastered && styles.masteredBtnOn]}
-        onPress={handleMastered}
-        activeOpacity={0.8}
-      >
-        <Text style={[styles.masteredLabel, placard.mastered && styles.masteredLabelOn]}>
-          {placard.mastered ? '✓ Mastered' : 'Mark Mastered'}
-        </Text>
-      </TouchableOpacity>
-    </View>
+      <View style={styles.footer}>
+        <MasteredButton mastered={placard.mastered} onPress={handleMastered} />
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: C.bg,
-    padding: 16,
-    paddingBottom: 28,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: C.bg,
-  },
   deck: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: C.danger, fontSize: 16, fontFamily: fonts.semiBold },
-  masteredBtn: {
-    backgroundColor: C.white,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  masteredBtnOn: { backgroundColor: C.successBg, borderColor: C.success },
-  masteredLabel: { color: C.mid, fontFamily: fonts.semiBold, fontSize: 15 },
-  masteredLabelOn: { color: C.success },
+  footer: { paddingHorizontal: 20, paddingBottom: 16, paddingTop: 8 },
 });

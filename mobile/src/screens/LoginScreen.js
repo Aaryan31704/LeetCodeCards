@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, StyleSheet } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../config';
 import { C, fonts } from '../theme';
+import Screen from '../components/Screen';
+import AppButton from '../components/AppButton';
+import StatusView from '../components/StatusView';
 
 const ERROR_MESSAGES = {
   token_exchange_failed: 'GitHub rejected the login. Check the OAuth client ID and secret.',
@@ -35,94 +31,64 @@ export default function LoginScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={C.primary} />
-        <Text style={styles.hint}>Loading…</Text>
-      </View>
+      <Screen bottomInset>
+        <StatusView loading message="Loading…" />
+      </Screen>
     );
   }
 
   return (
-    <LinearGradient colors={[C.bgSoft, C.bg, '#dde7f5']} style={styles.container}>
-      <Text style={styles.brand}>LeetPlacards</Text>
-      <Text style={styles.tagline}>
-        Your LeetCode solutions, turned into flashcards for revision.
-      </Text>
-      <TouchableOpacity
-        style={[styles.button, busy && styles.buttonDisabled]}
-        onPress={handleLogin}
-        activeOpacity={0.85}
-        disabled={busy}
-      >
-        {busy ? (
-          <ActivityIndicator color={C.white} />
-        ) : (
-          <Text style={styles.buttonText}>Login with GitHub</Text>
-        )}
-      </TouchableOpacity>
-      {error ? (
-        <>
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.hint}>API: {API_BASE_URL}</Text>
-        </>
-      ) : null}
-      <Text style={styles.hint}>
-        Authorize once, connect your repo, and every push becomes a card.
-      </Text>
-    </LinearGradient>
+    <Screen bottomInset>
+      <View style={styles.body}>
+        <Text style={styles.brand}>LeetPlacards</Text>
+        <Text style={styles.tagline}>
+          Hunt the pattern. Flip to check. Your GitHub solutions become the deck.
+        </Text>
+        <AppButton
+          title="Login with GitHub"
+          onPress={handleLogin}
+          loading={busy}
+          style={styles.button}
+        />
+        {error ? (
+          <>
+            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.hint}>API: {API_BASE_URL}</Text>
+          </>
+        ) : null}
+        <Text style={styles.hint}>
+          Authorize once, connect your repo, and every push becomes a card.
+        </Text>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  body: {
     flex: 1,
-    padding: 28,
+    paddingHorizontal: 28,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: C.bg,
   },
   brand: {
-    fontSize: 36,
+    fontSize: 32,
     fontFamily: fonts.bold,
     color: C.dark,
     marginBottom: 14,
     textAlign: 'center',
-    letterSpacing: -0.8,
+    letterSpacing: -0.6,
   },
   tagline: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: fonts.regular,
     color: C.mid,
     textAlign: 'center',
-    lineHeight: 26,
-    marginBottom: 36,
-    paddingHorizontal: 12,
+    lineHeight: 24,
+    marginBottom: 32,
+    paddingHorizontal: 8,
   },
-  button: {
-    backgroundColor: C.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 36,
-    borderRadius: 14,
-    marginBottom: 20,
-    minWidth: 240,
-    alignItems: 'center',
-    shadowColor: C.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: {
-    color: C.white,
-    fontSize: 17,
-    fontFamily: fonts.semiBold,
-  },
+  button: { minWidth: 240, marginBottom: 20 },
   errorText: {
     color: C.danger,
     fontSize: 15,

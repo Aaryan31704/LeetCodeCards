@@ -2,7 +2,10 @@ import React, { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { Ionicons } from '@expo/vector-icons';
 import {
   useFonts,
   DMSans_400Regular,
@@ -23,6 +26,7 @@ import { C, fonts } from './src/theme';
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
 
 const screenOptions = {
   headerStyle: { backgroundColor: C.bg },
@@ -31,6 +35,36 @@ const screenOptions = {
   headerShadowVisible: false,
   contentStyle: { backgroundColor: C.bg },
 };
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: C.primary,
+        tabBarInactiveTintColor: C.light,
+        tabBarLabelStyle: { fontFamily: fonts.semiBold, fontSize: 11, marginBottom: 2 },
+        tabBarHideOnKeyboard: true,
+        tabBarStyle: {
+          backgroundColor: C.white,
+          borderTopColor: C.border,
+          borderTopWidth: 1,
+          paddingTop: 4,
+        },
+        tabBarIcon: ({ color, size, focused }) => {
+          const icons = {
+            Study: focused ? 'albums' : 'albums-outline',
+            Library: focused ? 'library' : 'library-outline',
+          };
+          return <Ionicons name={icons[route.name]} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="Study" component={FlashcardDeckScreen} />
+      <Tab.Screen name="Library" component={PlacardListScreen} />
+    </Tab.Navigator>
+  );
+}
 
 function MainStack() {
   const { user } = useAuth();
@@ -42,23 +76,18 @@ function MainStack() {
         <Stack.Screen
           name="ConnectRepo"
           component={ConnectRepoScreen}
-          options={{ title: 'Connect repo' }}
+          options={{ headerShown: false }}
         />
       ) : null}
       <Stack.Screen
-        name="FlashcardDeck"
-        component={FlashcardDeckScreen}
+        name="MainTabs"
+        component={MainTabs}
         options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="PlacardList"
-        component={PlacardListScreen}
-        options={{ title: 'All Placards' }}
       />
       <Stack.Screen
         name="PlacardView"
         component={PlacardViewScreen}
-        options={{ title: 'Placard' }}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
@@ -111,8 +140,10 @@ export default function App() {
   if (!loaded) return null;
 
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

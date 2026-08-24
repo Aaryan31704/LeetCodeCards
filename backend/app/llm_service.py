@@ -2,7 +2,8 @@
 
 Two distinct generation paths:
 1. Front card: condense real LeetCode problem description + extract example
-2. Back card: analyze user's code to determine the algorithmic approach
+2. Back card: teach the generalizable pattern for the problem. User code is
+   supporting evidence of which pattern applies, not the thing being summarized.
 """
 
 import asyncio
@@ -140,64 +141,162 @@ Return clean JSON only, no markdown."""
     }
 
 
-async def generate_back_content(code: str) -> dict[str, str]:
-    """Generate the back-of-card content by analyzing the user's submitted code.
+_BACK_FIELDS = (
+    "pattern",
+    "recognition_clues",
+    "core_insight",
+    "approach",
+    "why_it_works",
+    "complexity",
+    "common_mistakes",
+    "transfer_question",
+)
 
-    Sends the code to the LLM and asks it to determine:
-    - The algorithmic pattern
-    - A 2-4 line explanation of the approach
-    - Time/space complexity
+_BIG_O = re.compile(r"O\([^)]+\)")
+
+
+def _empty_back(approach_msg: str) -> dict[str, str]:
+    return {
+        "pattern": "",
+        "recognition_clues": "",
+        "core_insight": "",
+        "approach": approach_msg,
+        "why_it_works": "",
+        "complexity": "",
+        "common_mistakes": "",
+        "transfer_question": "",
+        "time_complexity": "",
+        "space_complexity": "",
+        "summary": "",
+    }
+
+
+def _split_complexity(text: str) -> tuple[str, str]:
+    """Pull short Big-O badges out of a free-form complexity explanation."""
+    text = text or ""
+    time_m = re.search(r"time[^O]{0,24}(O\([^)]+\))", text, re.I)
+    space_m = re.search(r"space[^O]{0,24}(O\([^)]+\))", text, re.I)
+    found = _BIG_O.findall(text)
+    time_c = time_m.group(1) if time_m else (found[0] if found else "")
+    space_c = space_m.group(1) if space_m else (found[1] if len(found) > 1 else "")
+    return time_c, space_c
+
+
+def _compose_approach(back: dict) -> str:
+    """Flatten structured fields into one blob. Used only by tests / fallbacks."""
+    chunks = []
+    insight = (back.get("core_insight") or "").strip()
+    steps = (back.get("approach") or "").strip()
+    why = (back.get("why_it_works") or "").strip()
+    clues = (back.get("recognition_clues") or "").strip()
+    mistakes = (back.get("common_mistakes") or "").strip()
+    transfer = (back.get("transfer_question") or "").strip()
+    complexity = (back.get("complexity") or "").strip()
+    if insight:
+        chunks.append(insight)
+    if steps:
+        chunks.append(steps)
+    if why:
+        chunks.append(f"Why it works: {why}")
+    if clues:
+        chunks.append(f"Recognize this when: {clues}")
+    if complexity:
+        chunks.append(complexity)
+    if mistakes:
+        chunks.append(f"Common mistakes: {mistakes}")
+    if transfer:
+        chunks.append(f"Transfer: {transfer}")
+    return "\n\n".join(chunks)
+
+
+def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]:
+    """Keep teaching fields separate. `approach` is only the generic steps."""
+    if not parsed:
+        return _empty_back(fallback_msg)
+    back = {key: str(parsed.get(key) or "").strip() for key in _BACK_FIELDS}
+    if not back["approach"]:
+        back["approach"] = fallback_msg
+    pattern = back.get("pattern") or ""
+    clues = back.get("recognition_clues") or ""
+    if pattern and clues:
+        back["recognition_clues"] = re.sub(
+            re.escape(pattern), "this technique", clues, flags=re.I
+        ).strip()
+    time_c, space_c = _split_complexity(back["complexity"])
+    back["time_complexity"] = str(parsed.get("time_complexity") or "").strip() or time_c
+    back["space_complexity"] = str(parsed.get("space_complexity") or "").strip() or space_c
+    back["summary"] = str(parsed.get("solver_note") or parsed.get("summary") or "").strip()
+    return back
+
+
+async def generate_back_content(
+    problem_name: str,
+    leetcode_content: Optional[str],
+    code: str,
+) -> dict[str, str]:
+    """Generate pattern-first back-of-card fields for a LeetCode problem.
+
+    The problem statement is the primary source. User code is only a hint for
+    which standard pattern they used when several could apply.
     """
-    prompt = f"""Analyze this code and determine the algorithmic approach used to solve the problem.
-Explain it as if teaching a beginner who understands basic programming but is new to algorithms.
+    statement = (leetcode_content or "").strip()
+    if statement:
+        statement_block = statement[:4000]
+    else:
+        statement_block = (
+            "(No official statement available. Infer the well-known LeetCode "
+            f"problem named '{problem_name}'. Use the code only as evidence of "
+            "which pattern applies, not as something to narrate.)"
+        )
 
-Code:
+    prompt = f"""You are writing an interview flashcard for a LeetCode problem.
+Teach the GENERALIZABLE problem-solving approach. Do NOT summarize the user's code.
+
+Problem name: {problem_name}
+
+Official problem statement:
+---
+{statement_block}
+---
+
+User's submitted code (supporting evidence only — which pattern they chose.
+Do NOT describe this code, its variables, control flow, or language):
 ```
-{code[:8000]}
+{(code or "")[:4000]}
 ```
 
 Return ONLY valid JSON with these keys:
 
-- "pattern": The primary algorithm/data-structure pattern used (e.g. "Two Pointers", "Hash Map", "Sliding Window", "Dynamic Programming", "Binary Search", "BFS/DFS", "Greedy", "Heap", "Stack", "Tree", "Graph", "Backtracking", "Bit Manipulation", "Math", "Sorting")
+- "pattern": Primary algorithm/data-structure pattern (e.g. "Two Pointers", "Sliding Window", "Hash Map", "Binary Search", "DFS", "BFS", "Dynamic Programming", "Greedy", "Heap", "Stack", "Backtracking", "Bit Manipulation"). One name, not a sentence.
 
-- "approach": Explain the solving strategy in 2-4 clear, beginner-friendly lines.
-  Rules:
-  - First line: name the technique/pattern used.
-  - Next lines: explain HOW the solution works step by step using plain language.
-  - Do NOT mention variable names, syntax, or code details.
-  - Focus on the logic and reasoning behind the solution.
-  - Last line: explain WHY this approach is efficient (compared to brute force if applicable).
-  Example: "This solution uses the Two Pointer technique. Two indices move through the array from opposite ends, checking conditions and moving inward. When the target condition is met, the answer is found. This avoids nested loops and reduces time complexity from O(n^2) to O(n)."
+- "recognition_clues": Clues from the PROBLEM SHAPE that should make someone reach for this pattern. 1-2 sentences. Do NOT name the pattern — this text is shown before the answer.
 
-- "time_complexity": Big-O time complexity (e.g. "O(n)", "O(n log n)")
-- "space_complexity": Big-O space complexity (e.g. "O(1)", "O(n)")
+- "core_insight": The key observation that unlocks the solution, independent of any implementation. 1-2 sentences.
+
+- "approach": Generic step-by-step algorithm, 3-5 short steps. No variable names, no language syntax, no "the user's solution".
+
+- "why_it_works": The invariant or reasoning that makes the approach correct. 1-3 sentences.
+
+- "complexity": One short paragraph covering time AND space Big-O with justification, e.g. "Time O(n) because each element is visited once. Space O(1) because only a few pointers are stored."
+
+- "common_mistakes": Likely mistakes or misconceptions for this pattern/problem. 1-3 sentences.
+
+- "transfer_question": One short question that tests whether the reader can tell when this same pattern would apply to a different problem.
+
+- "solver_note": One sentence on how THEIR code relates to the textbook approach, with no identifiers. Empty string if it is a standard implementation of this pattern. Example: "Your solution spends extra memory for a single pass."
+
+Hard rules:
+- Never mention identifiers, data-structure field names from the code, or "this implementation".
+- Prefer the standard textbook approach for this problem. Use the code only if it clearly selects among valid patterns.
+- Do not recap the problem statement; teach how to solve problems like this.
 
 Return clean JSON only, no markdown."""
 
-    raw = await _call_groq(prompt, max_tokens=600)
+    raw = await _call_groq(prompt, max_tokens=1400)
+    fallback = "Approach not available. Set a valid Groq API key and resync."
     if not raw:
-        return {
-            "pattern": "",
-            "approach": "Approach not available. Set a valid Groq API key and resync.",
-            "time_complexity": "",
-            "space_complexity": "",
-        }
-
-    parsed = _parse_json(raw)
-    if not parsed:
-        return {
-            "pattern": "",
-            "approach": "Approach not available. Set a valid Groq API key and resync.",
-            "time_complexity": "",
-            "space_complexity": "",
-        }
-
-    return {
-        "pattern": parsed.get("pattern") or "",
-        "approach": parsed.get("approach") or "",
-        "time_complexity": parsed.get("time_complexity") or "",
-        "space_complexity": parsed.get("space_complexity") or "",
-    }
+        return _empty_back(fallback)
+    return _normalize_back(_parse_json(raw), fallback)
 
 
 async def generate_placard(
@@ -209,31 +308,24 @@ async def generate_placard(
 ) -> dict[str, Any]:
     """Orchestrate both LLM calls to produce a complete flashcard.
 
-    If leetcode_content is available, uses it for the front card.
-    Always analyzes the user's code for the back card.
+    Front card comes from the LeetCode statement. Back card teaches the
+    pattern; user code is only supporting evidence.
     """
     settings = get_settings()
+    missing_key_msg = "Set a valid Groq API key and resync to generate approach."
 
     if leetcode_content and settings.GROQ_API_KEY:
         front = await generate_front_content(problem_name, leetcode_content)
     elif leetcode_content:
         front = {"description": leetcode_content[:500], "example": ""}
     else:
-        front = {
-            "description": "",
-            "example": "",
-        }
+        front = {"description": "", "example": ""}
 
     if settings.GROQ_API_KEY:
         await asyncio.sleep(1)
-        back = await generate_back_content(code)
+        back = await generate_back_content(problem_name, leetcode_content, code)
     else:
-        back = {
-            "pattern": "",
-            "approach": "Set a valid Groq API key and resync to generate approach.",
-            "time_complexity": "",
-            "space_complexity": "",
-        }
+        back = _empty_back(missing_key_msg)
 
     return {
         "problem_name": problem_name,
@@ -241,10 +333,16 @@ async def generate_placard(
         "description": front["description"],
         "example": front["example"],
         "pattern": back["pattern"],
+        "recognition_clues": back.get("recognition_clues") or "",
+        "core_insight": back.get("core_insight") or "",
         "approach": back["approach"],
+        "why_it_works": back.get("why_it_works") or "",
+        "complexity": back.get("complexity") or "",
+        "common_mistakes": back.get("common_mistakes") or "",
+        "transfer_question": back.get("transfer_question") or "",
         "time_complexity": back["time_complexity"],
         "space_complexity": back["space_complexity"],
-        "summary": "",
+        "summary": back.get("summary") or "",
         "code": code,
         "github_file_path": github_file_path,
     }

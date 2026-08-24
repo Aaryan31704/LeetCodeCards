@@ -18,6 +18,12 @@ class PlacardBase(BaseModel):
     approach: Optional[str] = None
     time_complexity: Optional[str] = None
     space_complexity: Optional[str] = None
+    recognition_clues: Optional[str] = None
+    core_insight: Optional[str] = None
+    why_it_works: Optional[str] = None
+    complexity: Optional[str] = None
+    common_mistakes: Optional[str] = None
+    transfer_question: Optional[str] = None
     code: Optional[str] = None
     mastered: Optional[bool] = False
 

@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS placards (
     approach TEXT,
     time_complexity TEXT,
     space_complexity TEXT,
+    recognition_clues TEXT DEFAULT '',
+    core_insight TEXT DEFAULT '',
+    why_it_works TEXT DEFAULT '',
+    complexity TEXT DEFAULT '',
+    common_mistakes TEXT DEFAULT '',
+    transfer_question TEXT DEFAULT '',
     code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -87,6 +93,31 @@ DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'example') THEN
         ALTER TABLE placards ADD COLUMN example TEXT DEFAULT '';
+    END IF;
+END $$;
+"""
+
+# v4 migration: pattern-first teaching fields (not a code summary)
+MIGRATE_PLACARDS_V4_SQL = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'recognition_clues') THEN
+        ALTER TABLE placards ADD COLUMN recognition_clues TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'core_insight') THEN
+        ALTER TABLE placards ADD COLUMN core_insight TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'why_it_works') THEN
+        ALTER TABLE placards ADD COLUMN why_it_works TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'complexity') THEN
+        ALTER TABLE placards ADD COLUMN complexity TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'common_mistakes') THEN
+        ALTER TABLE placards ADD COLUMN common_mistakes TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'transfer_question') THEN
+        ALTER TABLE placards ADD COLUMN transfer_question TEXT DEFAULT '';
     END IF;
 END $$;
 """

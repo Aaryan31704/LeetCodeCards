@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useMemo, useLayoutEffect, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   RefreshControl,
   TextInput,
   ScrollView,
@@ -13,6 +12,9 @@ import {
 import { fetchPlacards, setAuthToken, syncNow } from '../api';
 import { useAuth } from '../context/AuthContext';
 import DiffBadge from '../components/DiffBadge';
+import Screen from '../components/Screen';
+import ScreenHeader from '../components/ScreenHeader';
+import StatusView from '../components/StatusView';
 import { C, fonts } from '../theme';
 
 const formatDate = (iso) => {
@@ -77,22 +79,6 @@ export default function PlacardListScreen({ navigation }) {
     await logout();
   }, [logout]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => navigation.navigate('FlashcardDeck')} style={styles.headerBtn}>
-            <Text style={styles.headerLink}>Deck</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleLogout} style={styles.headerBtn}>
-            <Text style={styles.headerLinkMuted}>Log out</Text>
-          </TouchableOpacity>
-        </View>
-      ),
-      headerTitle: user?.username ? `@${user.username}` : 'All Placards',
-    });
-  }, [navigation, user, handleLogout]);
-
   const load = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
@@ -143,36 +129,66 @@ export default function PlacardListScreen({ navigation }) {
   ).size;
   const progress = placards.length ? mastered / placards.length : 0;
 
+  const header = (
+    <ScreenHeader
+      title="Library"
+      subtitle={user?.username ? `@${user.username}` : 'All cards'}
+      right={
+        <TouchableOpacity onPress={handleLogout} hitSlop={8}>
+          <Text style={styles.logout}>Log out</Text>
+        </TouchableOpacity>
+      }
+    />
+  );
+
   if (loading && !refreshing) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={C.primary} />
-        <Text style={styles.hint}>Loading placards…</Text>
-      </View>
+      <Screen>
+        {header}
+        <StatusView loading message="Loading placards…" />
+      </Screen>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Text style={styles.hint}>Pull to retry, or check that the API is reachable.</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
-          <Text style={styles.retryBtnText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen>
+        {header}
+        <StatusView error={error} onRetry={() => load()} />
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <Screen>
+      {header}
       <View style={styles.stats}>
-        <Text style={styles.statsTitle}>
-          {placards.length} cards · {mastered} mastered · {patternCount} patterns
-        </Text>
+        <View style={styles.statRow}>
+          <View style={styles.statCell}>
+            <Text style={styles.statNum}>{placards.length}</Text>
+            <Text style={styles.statLabel}>cards</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statNum}>{mastered}</Text>
+            <Text style={styles.statLabel}>mastered</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statNum}>{patternCount}</Text>
+            <Text style={styles.statLabel}>patterns</Text>
+          </View>
+        </View>
         <View style={styles.statsTrack}>
           <View style={[styles.statsFill, { width: `${progress * 100}%` }]} />
         </View>
+        <Text style={styles.statsHint}>
+          {placards.length === 0
+            ? 'Push solutions and your deck fills itself.'
+            : progress >= 1
+              ? 'Every card mastered. Shuffle for a refresher.'
+              : `${Math.round(progress * 100)}% of your deck is locked in.`}
+        </Text>
       </View>
 
       <View style={styles.searchWrap}>
@@ -233,26 +249,22 @@ export default function PlacardListScreen({ navigation }) {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>
-              {placards.length === 0 ? 'No placards yet' : 'No matches'}
+              {placards.length === 0 ? 'Your hunt starts empty' : 'No matches'}
             </Text>
             <Text style={styles.hint}>
               {placards.length === 0
-                ? 'Push LeetCode solutions to your connected repo — cards appear automatically.'
+                ? 'Push LeetCode solutions to your connected repo and cards appear on their own.'
                 : 'Try a different search or filter.'}
             </Text>
           </View>
         }
       />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 14, marginRight: 4 },
-  headerBtn: { paddingVertical: 4, paddingHorizontal: 2 },
-  headerLink: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
-  headerLinkMuted: { color: C.mid, fontFamily: fonts.medium, fontSize: 14 },
+  logout: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
 
   stats: {
     marginHorizontal: 16,
@@ -269,6 +281,25 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: C.mid,
     marginBottom: 10,
+  },
+  statRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  statCell: { flex: 1, alignItems: 'center' },
+  statNum: { fontSize: 22, fontFamily: fonts.bold, color: C.dark, letterSpacing: -0.4 },
+  statLabel: {
+    fontSize: 11,
+    fontFamily: fonts.semiBold,
+    color: C.light,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: 2,
+  },
+  statDivider: { width: 1, height: 28, backgroundColor: C.border },
+  statsHint: {
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    color: C.mid,
+    marginTop: 10,
+    textAlign: 'center',
   },
   statsTrack: {
     height: 6,
