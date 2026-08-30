@@ -1,5 +1,6 @@
 """GitHub REST API integration: fetch commits and file contents."""
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -175,12 +176,18 @@ async def list_leetcode_files_at_head(
             prefix, owner, repo,
         )
         matched = [p for p in paths if _is_leetcode_file(p, "")]
-    out = []
-    for path in matched:
-        content = await get_file_content(owner, repo, path, token)
-        if content:
-            out.append((path, content))
-    return out
+    # Fetching every file serially made a small existing repo take minutes on
+    # Render. A bounded fan-out keeps the initial import fast without flooding
+    # GitHub's API.
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_one(path: str) -> Optional[tuple[str, str]]:
+        async with semaphore:
+            content = await get_file_content(owner, repo, path, token)
+        return (path, content) if content else None
+
+    fetched = await asyncio.gather(*(fetch_one(path) for path in matched))
+    return [item for item in fetched if item is not None]
 
 
 async def get_new_leetcode_files_since(

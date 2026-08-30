@@ -97,7 +97,10 @@ export default function FlashcardDeckScreen({ navigation }) {
     load();
     (async () => {
       try {
-        await syncNow();
+        const result = await syncNow();
+        if ((result?.placards_created_or_updated || 0) > 0) {
+          await load();
+        }
       } catch (_) {}
       try {
         const s = await getResyncStatus();

@@ -16,6 +16,7 @@ from uuid import UUID
 from app.database import get_conn
 from app.github_service import (
     get_new_leetcode_files_since,
+    list_leetcode_files_at_head,
     get_latest_commit_sha,
     get_file_content,
 )
@@ -180,6 +181,36 @@ async def upsert_placard(
         return row["id"]
 
 
+async def seed_discovered_placards(
+    user_id: UUID, files_with_content: list[tuple[str, str]]
+) -> None:
+    """Persist discovered code before slower LeetCode/LLM enrichment.
+
+    Users should see their repository contents immediately even if an external
+    enrichment service is slow or the free Render process restarts mid-sync.
+    Existing generated teaching content is deliberately preserved.
+    """
+    if not files_with_content:
+        return
+    async with get_conn() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO placards (
+                user_id, problem_name, github_file_path, difficulty, code
+            )
+            VALUES ($1, $2, $3, 'Medium', $4)
+            ON CONFLICT (user_id, github_file_path)
+            DO UPDATE SET
+                problem_name = EXCLUDED.problem_name,
+                code = EXCLUDED.code
+            """,
+            [
+                (user_id, _extract_problem_name_from_path(path), path, code)
+                for path, code in files_with_content
+            ],
+        )
+
+
 # ── Process a single placard ──
 
 async def _process_one(
@@ -259,6 +290,11 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
         # First import often saved the HEAD sha after matching 0 files because
         # the default LeetCode/ prefix missed LeetHub files at the repo root.
         if last_sha and not existing:
+            discovered = await list_leetcode_files_at_head(
+                owner, repo, token=token, leetcode_path_prefix=prefix
+            )
+            if discovered:
+                await seed_discovered_placards(user_id, discovered)
             progress = await get_resync_progress(user_id)
             if not is_resync_running(progress):
                 logger.info(
@@ -266,13 +302,14 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
                     user_id, owner, repo,
                 )
                 spawn_background(full_resync_background(user_id))
-            return 0
+            return len(discovered)
         if not files_with_content:
             latest = await get_latest_commit_sha(owner, repo, token)
             if latest:
                 await set_last_processed_commit(user_id, latest)
             return 0
 
+    await seed_discovered_placards(user_id, files_with_content)
     total = len(files_with_content)
     logger.info("User %s: %d new file(s) to process", user_id, total)
     count = 0
@@ -433,12 +470,18 @@ async def full_resync_background(user_id: UUID) -> None:
         )
         total = len(files_with_content)
         if total == 0:
-            latest = await get_latest_commit_sha(owner, repo, token)
-            if latest:
-                await set_last_processed_commit(user_id, latest)
-            await _set_progress(user_id, {"status": "done", "total": 0, "completed": 0, "current": ""})
+            await _set_progress(user_id, {
+                "status": "error",
+                "total": 0,
+                "completed": 0,
+                "current": (
+                    "No supported solution files were found. Check the repo name, "
+                    "GitHub access, and optional path prefix."
+                ),
+            })
             return
 
+        await seed_discovered_placards(user_id, files_with_content)
         await _set_progress(user_id, {"status": "running", "total": total, "completed": 0, "current": ""})
 
         completed = 0
