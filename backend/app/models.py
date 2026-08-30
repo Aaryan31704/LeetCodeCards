@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS placards (
     complexity TEXT DEFAULT '',
     common_mistakes TEXT DEFAULT '',
     transfer_question TEXT DEFAULT '',
+    user_approach TEXT DEFAULT '',
+    optimization_verdict TEXT DEFAULT '',
+    better_approach TEXT DEFAULT '',
+    user_time_complexity TEXT DEFAULT '',
+    user_space_complexity TEXT DEFAULT '',
+    better_time_complexity TEXT DEFAULT '',
+    better_space_complexity TEXT DEFAULT '',
     code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -118,6 +125,34 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'transfer_question') THEN
         ALTER TABLE placards ADD COLUMN transfer_question TEXT DEFAULT '';
+    END IF;
+END $$;
+"""
+
+# v5 migration: compare the submitted solution with the recommended approach
+MIGRATE_PLACARDS_V5_SQL = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'user_approach') THEN
+        ALTER TABLE placards ADD COLUMN user_approach TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'optimization_verdict') THEN
+        ALTER TABLE placards ADD COLUMN optimization_verdict TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'better_approach') THEN
+        ALTER TABLE placards ADD COLUMN better_approach TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'user_time_complexity') THEN
+        ALTER TABLE placards ADD COLUMN user_time_complexity TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'user_space_complexity') THEN
+        ALTER TABLE placards ADD COLUMN user_space_complexity TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'better_time_complexity') THEN
+        ALTER TABLE placards ADD COLUMN better_time_complexity TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'better_space_complexity') THEN
+        ALTER TABLE placards ADD COLUMN better_space_complexity TEXT DEFAULT '';
     END IF;
 END $$;
 """

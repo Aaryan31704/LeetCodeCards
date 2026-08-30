@@ -18,6 +18,7 @@ from app.models import (
     MIGRATE_PLACARDS_V2_SQL,
     MIGRATE_PLACARDS_V3_SQL,
     MIGRATE_PLACARDS_V4_SQL,
+    MIGRATE_PLACARDS_V5_SQL,
 )
 from app.routes.auth import router as auth_router
 from app.routes.placards import router as placards_router
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
                 await conn.execute(MIGRATE_PLACARDS_V2_SQL)
                 await conn.execute(MIGRATE_PLACARDS_V3_SQL)
                 await conn.execute(MIGRATE_PLACARDS_V4_SQL)
+                await conn.execute(MIGRATE_PLACARDS_V5_SQL)
             logger.info("Database ready")
     except Exception as e:
         logger.warning(

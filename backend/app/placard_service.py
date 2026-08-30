@@ -137,6 +137,13 @@ async def upsert_placard(
     complexity: str = "",
     common_mistakes: str = "",
     transfer_question: str = "",
+    user_approach: str = "",
+    optimization_verdict: str = "",
+    better_approach: str = "",
+    user_time_complexity: str = "",
+    user_space_complexity: str = "",
+    better_time_complexity: str = "",
+    better_space_complexity: str = "",
 ) -> UUID:
     async with get_conn() as conn:
         row = await conn.fetchrow(
@@ -146,10 +153,14 @@ async def upsert_placard(
                 description, example, summary, approach,
                 time_complexity, space_complexity, code,
                 recognition_clues, core_insight, why_it_works,
-                complexity, common_mistakes, transfer_question
+                complexity, common_mistakes, transfer_question,
+                user_approach, optimization_verdict, better_approach,
+                user_time_complexity, user_space_complexity,
+                better_time_complexity, better_space_complexity
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15, $16, $17, $18
+                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+                $23, $24, $25
             )
             ON CONFLICT (user_id, github_file_path)
             DO UPDATE SET
@@ -168,7 +179,14 @@ async def upsert_placard(
                 why_it_works = COALESCE(EXCLUDED.why_it_works, placards.why_it_works),
                 complexity = COALESCE(EXCLUDED.complexity, placards.complexity),
                 common_mistakes = COALESCE(EXCLUDED.common_mistakes, placards.common_mistakes),
-                transfer_question = COALESCE(EXCLUDED.transfer_question, placards.transfer_question)
+                transfer_question = COALESCE(EXCLUDED.transfer_question, placards.transfer_question),
+                user_approach = COALESCE(EXCLUDED.user_approach, placards.user_approach),
+                optimization_verdict = COALESCE(EXCLUDED.optimization_verdict, placards.optimization_verdict),
+                better_approach = COALESCE(EXCLUDED.better_approach, placards.better_approach),
+                user_time_complexity = COALESCE(EXCLUDED.user_time_complexity, placards.user_time_complexity),
+                user_space_complexity = COALESCE(EXCLUDED.user_space_complexity, placards.user_space_complexity),
+                better_time_complexity = COALESCE(EXCLUDED.better_time_complexity, placards.better_time_complexity),
+                better_space_complexity = COALESCE(EXCLUDED.better_space_complexity, placards.better_space_complexity)
             RETURNING id
             """,
             user_id, problem_name, github_file_path,
@@ -177,6 +195,9 @@ async def upsert_placard(
             time_complexity or None, space_complexity or None, code or None,
             recognition_clues or None, core_insight or None, why_it_works or None,
             complexity or None, common_mistakes or None, transfer_question or None,
+            user_approach or None, optimization_verdict or None, better_approach or None,
+            user_time_complexity or None, user_space_complexity or None,
+            better_time_complexity or None, better_space_complexity or None,
         )
         return row["id"]
 
@@ -276,6 +297,13 @@ async def _process_one(
         complexity=placard.get("complexity") or "",
         common_mistakes=placard.get("common_mistakes") or "",
         transfer_question=placard.get("transfer_question") or "",
+        user_approach=placard.get("user_approach") or "",
+        optimization_verdict=placard.get("optimization_verdict") or "",
+        better_approach=placard.get("better_approach") or "",
+        user_time_complexity=placard.get("user_time_complexity") or "",
+        user_space_complexity=placard.get("user_space_complexity") or "",
+        better_time_complexity=placard.get("better_time_complexity") or "",
+        better_space_complexity=placard.get("better_space_complexity") or "",
     )
     return True
 
@@ -389,6 +417,8 @@ async def get_incomplete_placards(user_id: UUID) -> list[dict]:
                 OR approach LIKE '[%'
                 OR pattern IS NULL OR pattern = ''
                 OR core_insight IS NULL OR length(core_insight) < 20
+                OR user_approach IS NULL OR length(user_approach) < 30
+                OR optimization_verdict IS NULL OR optimization_verdict = ''
               )
             ORDER BY created_at
             """,
@@ -552,7 +582,10 @@ _FULL_SELECT = """
            description, example, summary, approach,
            time_complexity, space_complexity, code, mastered, created_at,
            recognition_clues, core_insight, why_it_works,
-           complexity, common_mistakes, transfer_question
+           complexity, common_mistakes, transfer_question,
+           user_approach, optimization_verdict, better_approach,
+           user_time_complexity, user_space_complexity,
+           better_time_complexity, better_space_complexity
     FROM placards
 """
 

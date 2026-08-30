@@ -2,8 +2,8 @@
 
 Two distinct generation paths:
 1. Front card: condense real LeetCode problem description + extract example
-2. Back card: teach the generalizable pattern for the problem. User code is
-   supporting evidence of which pattern applies, not the thing being summarized.
+2. Back card: explain the submitted strategy, compare it with the textbook
+   approach, and suggest a better solution only when one truly exists.
 """
 
 import asyncio
@@ -205,6 +205,13 @@ _BACK_FIELDS = (
     "complexity",
     "common_mistakes",
     "transfer_question",
+    "user_approach",
+    "optimization_verdict",
+    "better_approach",
+    "user_time_complexity",
+    "user_space_complexity",
+    "better_time_complexity",
+    "better_space_complexity",
 )
 
 _BIG_O = re.compile(r"O\([^)]+\)")
@@ -220,6 +227,13 @@ def _empty_back(approach_msg: str) -> dict[str, str]:
         "complexity": "",
         "common_mistakes": "",
         "transfer_question": "",
+        "user_approach": "",
+        "optimization_verdict": "",
+        "better_approach": "",
+        "user_time_complexity": "",
+        "user_space_complexity": "",
+        "better_time_complexity": "",
+        "better_space_complexity": "",
         "time_complexity": "",
         "space_complexity": "",
         "summary": "",
@@ -270,6 +284,12 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
         return _empty_back(fallback_msg)
     back = {key: _clean_text(parsed.get(key)) for key in _BACK_FIELDS}
     back["approach"] = _number_steps(parsed.get("approach"))
+    back["user_approach"] = _number_steps(parsed.get("user_approach"))
+    back["better_approach"] = _number_steps(parsed.get("better_approach"))
+    if back["optimization_verdict"].startswith("Already optimal"):
+        back["better_approach"] = ""
+        back["better_time_complexity"] = ""
+        back["better_space_complexity"] = ""
     if not back["approach"]:
         back["approach"] = fallback_msg
     why = _clean_text(parsed.get("why_this_pattern") or back.get("core_insight"))
@@ -290,10 +310,21 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
 
 def _back_is_usable(back: dict[str, str]) -> bool:
     approach = (back.get("approach") or "").strip()
+    user_approach = (back.get("user_approach") or "").strip()
+    verdict = (back.get("optimization_verdict") or "").strip()
+    valid_verdict = verdict.startswith(
+        ("Already optimal", "Good, but improvable", "Suboptimal")
+    )
+    has_needed_improvement = verdict.startswith("Already optimal") or len(
+        (back.get("better_approach") or "").strip()
+    ) >= 30
     return bool(
         len((back.get("pattern") or "").strip()) >= 3
         and len((back.get("core_insight") or "").strip()) >= 20
         and len(approach) >= 30
+        and len(user_approach) >= 30
+        and valid_verdict
+        and has_needed_improvement
         and not approach.startswith(("Approach not available", "Set a valid"))
     )
 
@@ -303,23 +334,18 @@ async def generate_back_content(
     leetcode_content: Optional[str],
     code: str,
 ) -> dict[str, str]:
-    """Generate pattern-first back-of-card fields for a LeetCode problem.
-
-    The problem statement is the primary source. User code is only a hint for
-    which standard pattern they used when several could apply.
-    """
+    """Explain the submitted solution and compare it with the optimal approach."""
     statement = (leetcode_content or "").strip()
     if statement:
         statement_block = statement[:4000]
     else:
         statement_block = (
             "(No official statement available. Infer the well-known LeetCode "
-            f"problem named '{problem_name}'. Use the code only as evidence of "
-            "which pattern applies, not as something to narrate.)"
+            f"problem named '{problem_name}', then analyze the submitted code.)"
         )
 
     prompt = f"""You are writing an interview flashcard for a LeetCode problem.
-Teach the GENERALIZABLE problem-solving approach. Do NOT summarize the user's code.
+Explain the submitted strategy and compare it with the best interview approach.
 
 Problem name: {problem_name}
 
@@ -328,8 +354,7 @@ Official problem statement:
 {statement_block}
 ---
 
-User's submitted code (supporting evidence only — which pattern they chose.
-Do NOT describe this code, its variables, control flow, or language):
+User's submitted code:
 ```
 {(code or "")[:4000]}
 ```
@@ -340,11 +365,19 @@ Return ONLY valid JSON with these keys:
 
 - "why_this_pattern": Why THIS problem is that pattern. Talk about the problem shape (what the input looks like, what you must find or optimize), not about code. 2-3 sentences. Do not recap the full statement.
 
-- "approach": A JSON array of 3-5 short steps. Each step must state one concrete action and why it moves toward the answer. Use plain language. No language syntax and no "the user's solution".
+- "user_approach": A JSON array of 2-5 short steps explaining what the submitted code actually does. Describe its logic and chosen data structures in plain language. Do not copy code or identifier names.
+- "user_time_complexity": Big-O time complexity of the submitted code.
+- "user_space_complexity": Big-O auxiliary space complexity of the submitted code.
+- "optimization_verdict": Exactly one of "Already optimal", "Good, but improvable", or "Suboptimal", followed by one short sentence explaining why.
+- "approach": A JSON array of 3-5 short steps for the recommended interview approach. If the submitted approach is already optimal, this should clarify the clean textbook version of the same strategy.
+- "better_approach": A JSON array describing a strictly better approach only when one exists; otherwise return an empty array.
+- "better_time_complexity": Big-O time for the better approach, or an empty string when already optimal.
+- "better_space_complexity": Big-O auxiliary space for the better approach, or an empty string when already optimal.
 
 Hard rules:
-- Never mention identifiers, data-structure field names from the code, or "this implementation".
-- Prefer the standard textbook approach for this problem. Use the code only if it clearly selects among valid patterns.
+- Explain the submitted strategy, not each source line. Never copy identifier names.
+- Judge optimality against the standard interview solution for this exact problem.
+- Never invent a "better" approach when asymptotic complexity and clarity are already optimal.
 - Do not recap the problem statement.
 
 Return clean JSON only, no markdown."""
@@ -352,10 +385,10 @@ Return clean JSON only, no markdown."""
     fallback = "Approach not available. Set a valid Groq API key and resync."
     for attempt in range(2):
         suffix = "" if attempt == 0 else (
-            "\nYour previous response was incomplete. Return all three keys; "
-            "approach must be a JSON array with at least 3 concrete steps."
+            "\nYour previous response was incomplete. Return every required key; "
+            "include the submitted-code analysis, verdict, and recommended approach."
         )
-        raw = await _call_groq(prompt + suffix, max_tokens=900)
+        raw = await _call_groq(prompt + suffix, max_tokens=1400)
         back = _normalize_back(_parse_json(raw) if raw else None, fallback)
         if _back_is_usable(back):
             return back
@@ -371,8 +404,8 @@ async def generate_placard(
 ) -> dict[str, Any]:
     """Orchestrate both LLM calls to produce a complete flashcard.
 
-    Front card comes from the LeetCode statement. Back card teaches the
-    pattern; user code is only supporting evidence.
+    Front card comes from the LeetCode statement. Back card explains and
+    evaluates the submitted code before teaching the recommended approach.
     """
     settings = get_settings()
     missing_key_msg = "Set a valid Groq API key and resync to generate approach."
@@ -406,6 +439,13 @@ async def generate_placard(
         "complexity": back.get("complexity") or "",
         "common_mistakes": back.get("common_mistakes") or "",
         "transfer_question": back.get("transfer_question") or "",
+        "user_approach": back.get("user_approach") or "",
+        "optimization_verdict": back.get("optimization_verdict") or "",
+        "better_approach": back.get("better_approach") or "",
+        "user_time_complexity": back.get("user_time_complexity") or "",
+        "user_space_complexity": back.get("user_space_complexity") or "",
+        "better_time_complexity": back.get("better_time_complexity") or "",
+        "better_space_complexity": back.get("better_space_complexity") or "",
         "time_complexity": back["time_complexity"],
         "space_complexity": back["space_complexity"],
         "summary": back.get("summary") or "",

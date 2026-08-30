@@ -24,6 +24,13 @@ class PlacardBase(BaseModel):
     complexity: Optional[str] = None
     common_mistakes: Optional[str] = None
     transfer_question: Optional[str] = None
+    user_approach: Optional[str] = None
+    optimization_verdict: Optional[str] = None
+    better_approach: Optional[str] = None
+    user_time_complexity: Optional[str] = None
+    user_space_complexity: Optional[str] = None
+    better_time_complexity: Optional[str] = None
+    better_space_complexity: Optional[str] = None
     code: Optional[str] = None
     mastered: Optional[bool] = False
 

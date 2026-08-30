@@ -298,6 +298,12 @@ check(
             {
                 "pattern": "Hash Map",
                 "why_this_pattern": "Fast complement lookups turn pair search into one scan.",
+                "user_approach": [
+                    "Scan each number once.",
+                    "Look up the complement in a hash map.",
+                    "Return both indices when the match appears.",
+                ],
+                "optimization_verdict": "Already optimal — linear time is best for an unsorted array.",
                 "approach": [
                     "Create an empty lookup.",
                     "Check the needed complement for each value.",
@@ -308,6 +314,22 @@ check(
         )
     ),
 )
+comparison = _normalize_back(
+    {
+        "pattern": "Hash Map",
+        "why_this_pattern": "A lookup avoids checking every possible pair.",
+        "user_approach": ["Sort the values", "Search for a pair"],
+        "optimization_verdict": "Good, but improvable — sorting costs extra time.",
+        "approach": ["Build a lookup", "Check each complement", "Return the pair"],
+        "better_approach": ["Scan once", "Check a hash map", "Store the current value"],
+        "user_time_complexity": "O(n log n)",
+        "better_time_complexity": "O(n)",
+    },
+    "fallback",
+)
+check("user approach is numbered", comparison["user_approach"].startswith("1. Sort"))
+check("better approach is numbered", comparison["better_approach"].startswith("1. Scan"))
+check("optimization verdict remains separate", comparison["optimization_verdict"].startswith("Good"))
 check("empty parse uses fallback", _normalize_back(None, "nope")["approach"] == "nope")
 
 print("\n== Stale resync detection ==")
