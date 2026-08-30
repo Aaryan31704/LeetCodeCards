@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../config';
 import { C, fonts } from '../theme';
@@ -40,12 +41,16 @@ export default function LoginScreen() {
   return (
     <Screen bottomInset>
       <View style={styles.body}>
+        <View style={styles.logoOrb}>
+          <Ionicons name="layers" size={32} color={C.cyan} />
+        </View>
+        <Text style={styles.kicker}>ALGORITHM MEMORY SYSTEM</Text>
         <Text style={styles.brand}>LeetPlacards</Text>
         <Text style={styles.tagline}>
-          Hunt the pattern. Flip to check. Your GitHub solutions become the deck.
+          Turn solved code into pattern recognition. Your GitHub becomes a living interview deck.
         </Text>
         <AppButton
-          title="Login with GitHub"
+          title="Connect GitHub"
           onPress={handleLogin}
           loading={busy}
           style={styles.button}
@@ -57,7 +62,7 @@ export default function LoginScreen() {
           </>
         ) : null}
         <Text style={styles.hint}>
-          Authorize once, connect your repo, and every push becomes a card.
+          Secure OAuth · read your chosen repository · keep every push in sync
         </Text>
       </View>
     </Screen>
@@ -71,10 +76,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  brand: {
-    fontSize: 32,
+  logoOrb: {
+    width: 74,
+    height: 74,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.cyanSoft,
+    borderWidth: 1,
+    borderColor: C.cyanBorder,
+    shadowColor: C.cyan,
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    elevation: 9,
+    marginBottom: 22,
+  },
+  kicker: {
+    color: C.cyan,
     fontFamily: fonts.bold,
-    color: C.dark,
+    fontSize: 10,
+    letterSpacing: 2.2,
+    marginBottom: 9,
+  },
+  brand: {
+    fontSize: 38,
+    fontFamily: fonts.bold,
+    color: C.text,
     marginBottom: 14,
     textAlign: 'center',
     letterSpacing: -0.6,
@@ -82,13 +109,13 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 16,
     fontFamily: fonts.regular,
-    color: C.mid,
+    color: C.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 32,
     paddingHorizontal: 8,
   },
-  button: { minWidth: 240, marginBottom: 20 },
+  button: { minWidth: 250, marginBottom: 20 },
   errorText: {
     color: C.danger,
     fontSize: 15,
@@ -98,8 +125,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.medium,
   },
   hint: {
-    color: C.light,
-    fontSize: 14,
+    color: C.textMuted,
+    fontSize: 12,
     textAlign: 'center',
     paddingHorizontal: 20,
     lineHeight: 21,

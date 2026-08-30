@@ -112,12 +112,14 @@ export default function ConnectRepoScreen({ navigation }) {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.hint}>
-            {alreadyLinked
-              ? 'Connecting a different repo replaces this deck with cards from the new one.'
-              : 'We’ll create a webhook so new pushes become placards automatically (e.g. LeetHub).'}
-          </Text>
-          <TextInput
+          <View style={styles.panel}>
+            <Text style={styles.panelKicker}>REPOSITORY UPLINK</Text>
+            <Text style={styles.hint}>
+              {alreadyLinked
+                ? 'Connecting a different repo replaces this deck with cards from the new one.'
+                : 'Link the repository that receives your accepted LeetCode solutions.'}
+            </Text>
+            <TextInput
             style={styles.input}
             placeholder="Owner (e.g. your-username)"
             placeholderTextColor={C.light}
@@ -128,8 +130,8 @@ export default function ConnectRepoScreen({ navigation }) {
             }}
             autoCapitalize="none"
             autoCorrect={false}
-          />
-          <TextInput
+            />
+            <TextInput
             style={styles.input}
             placeholder="Repo name (e.g. leetcode-problems)"
             placeholderTextColor={C.light}
@@ -140,24 +142,25 @@ export default function ConnectRepoScreen({ navigation }) {
             }}
             autoCapitalize="none"
             autoCorrect={false}
-          />
-          <TextInput
+            />
+            <TextInput
             style={styles.input}
             placeholder="Path prefix (leave blank if files are at repo root)"
             placeholderTextColor={C.light}
             value={prefix}
             onChangeText={setPrefix}
             autoCapitalize="none"
-          />
-          <Text style={styles.hint}>
-            Leave this blank for LeetHub-style repos (0001-two-sum/…). Only set a folder if solutions live under one, like LeetCode/.
-          </Text>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <AppButton
-            title={alreadyLinked ? 'Switch repo & resync' : 'Connect repo & sync'}
-            onPress={handleConnect}
-            loading={submitting}
-          />
+            />
+            <Text style={styles.pathHint}>
+              Leave blank for LeetHub folders such as 0001-two-sum. Set a prefix only when every solution is inside one folder.
+            </Text>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <AppButton
+              title={alreadyLinked ? 'Switch repository' : 'Initialize deck'}
+              onPress={handleConnect}
+              loading={submitting}
+            />
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -166,25 +169,46 @@ export default function ConnectRepoScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 48 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 48 },
+  panel: {
+    backgroundColor: C.glass,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    borderRadius: 20,
+    padding: 18,
+  },
+  panelKicker: {
+    color: C.cyan,
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
   hint: {
-    color: C.mid,
+    color: C.textSecondary,
     fontSize: 15,
     marginBottom: 12,
     lineHeight: 22,
     fontFamily: fonts.regular,
   },
   input: {
-    backgroundColor: C.white,
+    backgroundColor: C.surfaceDeep,
     borderRadius: radius.md,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 15,
-    color: C.dark,
+    color: C.text,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.glassBorder,
     fontFamily: fonts.regular,
+  },
+  pathHint: {
+    color: C.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
   },
   errorText: {
     color: C.danger,
@@ -192,5 +216,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.medium,
   },
-  logout: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
+  logout: { color: C.cyan, fontFamily: fonts.semiBold, fontSize: 14 },
 });

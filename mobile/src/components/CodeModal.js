@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { C, fonts } from '../theme';
 
@@ -22,6 +23,7 @@ const KEYWORDS = new Set([
 
 function tokenize(code) {
   if (!code) return [{ type: 'plain', text: 'No code available.' }];
+  if (code.length > 20000) return [{ type: 'plain', text: code }];
   const tokens = [];
   const re =
     /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|(\b\d+\.?\d*\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)|(\s+)|(.)/g;
@@ -46,7 +48,7 @@ const TOKEN_COLOR = {
   plain: '#cbd5e1',
 };
 
-export default function CodeModal({ visible, code, onClose, title = 'Your Code' }) {
+export default function CodeModal({ visible, code, loading = false, onClose, title = 'Your Code' }) {
   const tokens = useMemo(() => tokenize(code), [code]);
 
   return (
@@ -58,17 +60,24 @@ export default function CodeModal({ visible, code, onClose, title = 'Your Code' 
             <Text style={styles.closeText}>Close</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-          <ScrollView horizontal showsHorizontalScrollIndicator>
-            <Text style={styles.code} selectable>
-              {tokens.map((t, i) => (
-                <Text key={i} style={{ color: TOKEN_COLOR[t.type] || TOKEN_COLOR.plain }}>
-                  {t.text}
-                </Text>
-              ))}
-            </Text>
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator size="large" color={C.primary} />
+            <Text style={styles.loadingText}>Decrypting source…</Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <Text style={styles.code} selectable>
+                {tokens.map((t, i) => (
+                  <Text key={i} style={{ color: TOKEN_COLOR[t.type] || TOKEN_COLOR.plain }}>
+                    {t.text}
+                  </Text>
+                ))}
+              </Text>
+            </ScrollView>
           </ScrollView>
-        </ScrollView>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -85,12 +94,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: C.cyanBorder,
   },
   title: { fontSize: 17, fontFamily: fonts.bold, color: C.codeText },
-  closeBtn: { backgroundColor: '#334155', paddingVertical: 8, paddingHorizontal: 18, borderRadius: 8 },
+  closeBtn: {
+    backgroundColor: C.cyanSoft,
+    borderWidth: 1,
+    borderColor: C.cyanBorder,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
   closeText: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 },
   scroll: { flex: 1 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: C.mid, fontFamily: fonts.medium, fontSize: 14 },
   content: { padding: 20, paddingBottom: 40 },
   code: { fontSize: 13, lineHeight: 20, fontFamily: mono },
 });

@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontFamily: fonts.bold,
-    color: C.dark,
+    color: C.text,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   message: {
-    color: C.mid,
+    color: C.textSecondary,
     fontSize: 15,
     textAlign: 'center',
     marginTop: 8,

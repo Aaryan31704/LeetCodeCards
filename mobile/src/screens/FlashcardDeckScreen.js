@@ -1,18 +1,26 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
-  PanResponder,
   Alert,
   Modal,
   Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { fetchPlacards, toggleMastered, resyncCards, getResyncStatus, syncNow, setAuthToken } from '../api';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  fetchPlacards,
+  fetchPlacardById,
+  toggleMastered,
+  resyncCards,
+  getResyncStatus,
+  syncNow,
+  setAuthToken,
+} from '../api';
 import { useAuth } from '../context/AuthContext';
 import FlipCard from '../components/FlipCard';
 import CodeModal from '../components/CodeModal';
@@ -23,7 +31,6 @@ import StatusView from '../components/StatusView';
 import MasteredButton from '../components/MasteredButton';
 import { C, fonts, studyOrder } from '../theme';
 
-const SWIPE_Y = 60;
 const HINT_KEY = '@leetplacards_gesture_hint_seen';
 
 function ResyncBanner({ progress }) {
@@ -53,7 +60,7 @@ function GestureHint({ visible, onDismiss }) {
           <Text style={styles.hintTitle}>How to study</Text>
           <Text style={styles.hintLine}>Read the problem, then swipe right to flip.</Text>
           <Text style={styles.hintLine}>The back names the pattern, why it fits, and the approach.</Text>
-          <Text style={styles.hintLine}>Swipe up or tap Next for the next card.</Text>
+          <Text style={styles.hintLine}>Scroll inside the card. Use the arrow controls for the next card.</Text>
           <AppButton title="Got it" onPress={onDismiss} style={{ marginTop: 16 }} />
         </View>
       </Pressable>
@@ -69,10 +76,13 @@ export default function FlashcardDeckScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [idx, setIdx] = useState(0);
   const [codeVisible, setCodeVisible] = useState(false);
+  const [modalCode, setModalCode] = useState('');
+  const [codeLoading, setCodeLoading] = useState(false);
   const [resyncProgress, setResyncProgress] = useState(null);
   const [showHint, setShowHint] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pollRef = useRef(null);
+  const hasLoadedRef = useRef(false);
 
   const rebuildDeck = useCallback((source) => {
     setCards(studyOrder(source));
@@ -80,18 +90,27 @@ export default function FlashcardDeckScreen({ navigation }) {
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const firstLoad = !hasLoadedRef.current;
+    if (firstLoad) setLoading(true);
     setError(null);
     try {
-      const data = await fetchPlacards(true);
+      const data = await fetchPlacards(true, false);
+      hasLoadedRef.current = true;
       setAllCards(data);
-      rebuildDeck(data);
+      setCards((previous) => {
+        if (firstLoad || previous.length === 0) return studyOrder(data);
+        const latest = new Map(data.map((item) => [item.id, item]));
+        const kept = previous.filter((item) => latest.has(item.id)).map((item) => latest.get(item.id));
+        const seen = new Set(kept.map((item) => item.id));
+        return [...kept, ...data.filter((item) => !seen.has(item.id))];
+      });
+      setIdx((current) => Math.min(current, Math.max(data.length - 1, 0)));
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [rebuildDeck]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -162,15 +181,10 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   const card = cards[idx] || null;
   const total = cards.length;
-  const idxRef = useRef(idx);
-  const totalRef = useRef(total);
-  useEffect(() => {
-    idxRef.current = idx;
-  }, [idx]);
-  useEffect(() => {
-    totalRef.current = total;
-  }, [total]);
-
+  const masteredCount = useMemo(
+    () => allCards.filter((item) => item.mastered).length,
+    [allCards]
+  );
   const slideTo = useCallback(
     (to, direction) => {
       Haptics.selectionAsync().catch(() => {});
@@ -201,27 +215,6 @@ export default function FlashcardDeckScreen({ navigation }) {
   const prev = useCallback(() => {
     if (idx > 0) slideTo(idx - 1, 'down');
   }, [idx, slideTo]);
-
-  const nextRef = useRef(next);
-  const prevRef = useRef(prev);
-  useEffect(() => {
-    nextRef.current = next;
-    prevRef.current = prev;
-  }, [next, prev]);
-
-  const deckPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dy) > 15 && Math.abs(g.dy) > Math.abs(g.dx),
-      onPanResponderRelease: (_, g) => {
-        const ci = idxRef.current;
-        const t = totalRef.current;
-        if (g.dy < -SWIPE_Y && ci < t - 1) nextRef.current();
-        else if (g.dy > SWIPE_Y && ci > 0) prevRef.current();
-      },
-    })
-  ).current;
 
   const handleMastered = async () => {
     if (!card) return;
@@ -270,12 +263,36 @@ export default function FlashcardDeckScreen({ navigation }) {
     ]);
   };
 
+  const handleShowCode = async () => {
+    if (!card) return;
+    setCodeVisible(true);
+    if (card.code) {
+      setModalCode(card.code);
+      return;
+    }
+    setModalCode('');
+    setCodeLoading(true);
+    try {
+      const fullCard = await fetchPlacardById(card.id);
+      setModalCode(fullCard.code || '');
+    } catch (e) {
+      setModalCode(`Could not load code: ${e.message || 'Unknown error'}`);
+    } finally {
+      setCodeLoading(false);
+    }
+  };
+
   const headerRight = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-      <TouchableOpacity onPress={() => navigation.navigate('ConnectRepo')} hitSlop={8}>
-        <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 }}>Change repo</Text>
+    <View style={styles.headerActions}>
+      <TouchableOpacity
+        style={styles.headerIcon}
+        onPress={() => navigation.navigate('ConnectRepo')}
+        hitSlop={8}
+      >
+        <Ionicons name="git-branch-outline" size={17} color={C.cyan} />
       </TouchableOpacity>
       <TouchableOpacity
+        style={styles.headerIcon}
         onPress={() => {
           Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
             { text: 'Cancel', style: 'cancel' },
@@ -291,7 +308,7 @@ export default function FlashcardDeckScreen({ navigation }) {
         }}
         hitSlop={8}
       >
-        <Text style={{ color: C.primary, fontFamily: fonts.semiBold, fontSize: 14 }}>Log out</Text>
+        <Ionicons name="log-out-outline" size={17} color={C.textSecondary} />
       </TouchableOpacity>
     </View>
   );
@@ -336,16 +353,20 @@ export default function FlashcardDeckScreen({ navigation }) {
   }
 
   const progress = total > 0 ? (idx + 1) / total : 0;
-  const masteredCount = allCards.filter((c) => c.mastered).length;
 
   return (
-    <Screen {...deckPan.panHandlers}>
+    <Screen bottomInset>
       <GestureHint visible={showHint} onDismiss={dismissHint} />
-      <CodeModal visible={codeVisible} code={card.code} onClose={() => setCodeVisible(false)} />
+      <CodeModal
+        visible={codeVisible}
+        code={modalCode}
+        loading={codeLoading}
+        onClose={() => setCodeVisible(false)}
+      />
 
       <ScreenHeader
-        title="Study"
-        subtitle={`${idx + 1} of ${total} · ${masteredCount} mastered`}
+        title="Neural Deck"
+        subtitle={`NODE ${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}  ·  ${masteredCount} MASTERED`}
         right={headerRight}
       />
 
@@ -360,7 +381,7 @@ export default function FlashcardDeckScreen({ navigation }) {
       >
         <FlipCard
           card={card}
-          onShowCode={() => setCodeVisible(true)}
+          onShowCode={handleShowCode}
         />
       </Animated.View>
 
@@ -371,7 +392,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             onPress={prev}
             disabled={idx === 0}
           >
-            <Text style={styles.navLabel}>‹ Prev</Text>
+            <Ionicons name="chevron-back" size={19} color={C.textSecondary} />
           </TouchableOpacity>
           <MasteredButton mastered={card.mastered} onPress={handleMastered} style={styles.masteredWrap} />
           <TouchableOpacity
@@ -379,7 +400,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             onPress={next}
             disabled={idx >= total - 1}
           >
-            <Text style={styles.navLabel}>Next ›</Text>
+            <Ionicons name="chevron-forward" size={19} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -388,6 +409,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             style={styles.actBtn}
             onPress={() => rebuildDeck(allCards)}
           >
+            <Ionicons name="shuffle" size={15} color={C.cyan} />
             <Text style={styles.actLabel}>Shuffle</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -395,6 +417,7 @@ export default function FlashcardDeckScreen({ navigation }) {
             onPress={() => handleResync(false)}
             disabled={isResyncing}
           >
+            <Ionicons name="refresh" size={15} color={C.cyan} />
             <Text style={styles.actLabel}>{isResyncing ? 'Syncing...' : 'Resync'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -402,7 +425,8 @@ export default function FlashcardDeckScreen({ navigation }) {
             onPress={() => handleResync(true)}
             disabled={isResyncing}
           >
-            <Text style={styles.actLabel}>Full Resync</Text>
+            <Ionicons name="sparkles-outline" size={15} color={C.violet} />
+            <Text style={[styles.actLabel, { color: C.violet }]}>Rebuild AI</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -412,43 +436,71 @@ export default function FlashcardDeckScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   masteredWrap: { flex: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.glass,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+  },
 
   progressTrack: {
-    height: 3,
-    backgroundColor: C.border,
+    height: 4,
+    backgroundColor: C.glass,
     marginHorizontal: 20,
     borderRadius: 2,
     marginTop: 6,
     marginBottom: 2,
     overflow: 'hidden',
   },
-  progressFill: { height: '100%', backgroundColor: C.primary, borderRadius: 2 },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.cyan,
+    borderRadius: 2,
+    shadowColor: C.cyan,
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
 
   resyncBanner: {
     marginHorizontal: 20,
     marginTop: 6,
     marginBottom: 2,
-    backgroundColor: C.primarySoft,
-    borderRadius: 8,
+    backgroundColor: C.glass,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.cyanBorder,
     padding: 10,
   },
   resyncText: {
     fontSize: 12,
-    color: C.primary,
+    color: C.cyan,
     fontFamily: fonts.semiBold,
     marginBottom: 6,
   },
   resyncTrack: {
     height: 4,
-    backgroundColor: C.border,
+    backgroundColor: C.surfaceDeep,
     borderRadius: 2,
     overflow: 'hidden',
   },
-  resyncFill: { height: '100%', backgroundColor: C.primary, borderRadius: 2 },
+  resyncFill: { height: '100%', backgroundColor: C.cyan, borderRadius: 2 },
 
   deck: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  controls: { paddingHorizontal: 20, paddingBottom: 24, paddingTop: 4 },
+  controls: {
+    marginHorizontal: 14,
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: 18,
+    backgroundColor: C.glass,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+  },
   navRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -460,14 +512,10 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     paddingHorizontal: 16,
     borderRadius: 10,
-    backgroundColor: C.white,
-    elevation: 2,
-    shadowColor: C.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    backgroundColor: C.surfaceDeep,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
   },
-  navLabel: { color: C.dark, fontFamily: fonts.semiBold, fontSize: 13 },
   dim: { opacity: 0.3 },
   actRow: {
     flexDirection: 'row',
@@ -477,12 +525,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   actBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: C.primarySoft,
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: C.surfaceDeep,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  actLabel: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 12 },
+  actLabel: { color: C.cyan, fontFamily: fonts.semiBold, fontSize: 11 },
 
   hintOverlay: {
     flex: 1,
@@ -492,7 +545,9 @@ const styles = StyleSheet.create({
     padding: 28,
   },
   hintCard: {
-    backgroundColor: C.white,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.glassBorder,
     borderRadius: 20,
     padding: 28,
     width: '100%',
@@ -501,14 +556,14 @@ const styles = StyleSheet.create({
   hintTitle: {
     fontSize: 20,
     fontFamily: fonts.bold,
-    color: C.dark,
+    color: C.text,
     marginBottom: 16,
     textAlign: 'center',
   },
   hintLine: {
     fontSize: 15,
     fontFamily: fonts.regular,
-    color: C.mid,
+    color: C.textSecondary,
     lineHeight: 28,
     marginBottom: 4,
   },

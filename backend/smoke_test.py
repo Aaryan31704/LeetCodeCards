@@ -25,6 +25,9 @@ from app.github_service import _is_leetcode_file  # noqa: E402
 from app.llm_service import (
     _extract_problem_name_from_path,
     _parse_json,
+    _number_steps,
+    _normalize_front,
+    _back_is_usable,
     _split_complexity,
     _compose_approach,
     _normalize_back,
@@ -214,8 +217,31 @@ check("plain json", _parse_json('{"a": 1}') == {"a": 1})
 check("fenced json", _parse_json('```json\n{"a": 1}\n```') == {"a": 1})
 check("bare fence", _parse_json('```\n{"a": 1}\n```') == {"a": 1})
 check("invalid json returns None", _parse_json("not json at all") is None)
+check(
+    "front fields become labeled brief",
+    _normalize_front(
+        {
+            "goal": "Find a matching pair.",
+            "given": "An array and a target.",
+            "return": "The two indices.",
+            "key_rule": "Use each index once.",
+            "example": "Input: [2,7], 9\nOutput: [0,1]",
+        },
+        "",
+    )["description"].startswith("Goal\nFind a matching pair."),
+)
 
 print("\n== Pattern-first back-card helpers ==")
+check(
+    "approach arrays become numbered lines",
+    _number_steps(["Scan each value", "Check its complement", "Return the pair"])
+    == "1. Scan each value\n2. Check its complement\n3. Return the pair",
+)
+check(
+    "legacy stringified arrays are repaired",
+    _number_steps("['Scan each value', 'Return the answer']")
+    == "1. Scan each value\n2. Return the answer",
+)
 check(
     "complexity splits time and space",
     _split_complexity("Time O(n) because we scan once. Space O(1) because only pointers.")
@@ -258,9 +284,30 @@ check("normalize maps solver_note to summary", "extra memory" in normalized["sum
 check("normalize splits complexity badges", normalized["time_complexity"] == "O(n)")
 check("normalize strips pattern leak from clues", "Two Pointers" not in normalized["recognition_clues"])
 check("normalize maps why_this_pattern to core_insight", _normalize_back(
-    {"pattern": "Two Pointers", "why_this_pattern": "Sorted input plus a pair target.", "approach": "Walk from both ends."},
+    {
+        "pattern": "Two Pointers",
+        "why_this_pattern": "Sorted input plus a pair target makes opposite-end elimination possible.",
+        "approach": ["Start at both ends.", "Compare the pair.", "Move the impossible side."],
+    },
     "fallback",
-)["core_insight"] == "Sorted input plus a pair target.")
+)["core_insight"] == "Sorted input plus a pair target makes opposite-end elimination possible.")
+check(
+    "complete teaching back is usable",
+    _back_is_usable(
+        _normalize_back(
+            {
+                "pattern": "Hash Map",
+                "why_this_pattern": "Fast complement lookups turn pair search into one scan.",
+                "approach": [
+                    "Create an empty lookup.",
+                    "Check the needed complement for each value.",
+                    "Store each value after checking it.",
+                ],
+            },
+            "fallback",
+        )
+    ),
+)
 check("empty parse uses fallback", _normalize_back(None, "nope")["approach"] == "nope")
 
 print("\n== Stale resync detection ==")

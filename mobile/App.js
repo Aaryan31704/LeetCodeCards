@@ -25,7 +25,7 @@ const Stack = createNativeStackNavigator();
 
 const screenOptions = {
   headerStyle: { backgroundColor: C.bg },
-  headerTintColor: C.dark,
+  headerTintColor: C.text,
   headerTitleStyle: { fontFamily: fonts.semiBold, fontSize: 17 },
   headerShadowVisible: false,
   contentStyle: { backgroundColor: C.bg },
@@ -72,7 +72,7 @@ function AppContent() {
   if (!isLoggedIn) {
     return (
       <>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
         <LoginScreen />
       </>
     );
@@ -80,7 +80,7 @@ function AppContent() {
 
   return (
     <NavigationContainer>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <MainStack />
     </NavigationContainer>
   );

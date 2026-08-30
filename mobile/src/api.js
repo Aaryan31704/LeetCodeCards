@@ -12,8 +12,10 @@ function headers() {
   return h;
 }
 
-export async function fetchPlacards(full = false) {
-  const url = full ? `${API_BASE_URL}/placards?full=true` : `${API_BASE_URL}/placards`;
+export async function fetchPlacards(full = false, includeCode = false) {
+  const url = full
+    ? `${API_BASE_URL}/placards?full=true&include_code=${includeCode}`
+    : `${API_BASE_URL}/placards`;
   const res = await fetch(url, { headers: headers() });
   if (res.status === 401) throw new Error('Not authenticated');
   if (!res.ok) throw new Error('Failed to fetch placards');

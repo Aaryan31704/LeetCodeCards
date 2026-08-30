@@ -155,20 +155,20 @@ async def upsert_placard(
             DO UPDATE SET
                 problem_name = EXCLUDED.problem_name,
                 difficulty = EXCLUDED.difficulty,
-                pattern = EXCLUDED.pattern,
-                description = EXCLUDED.description,
-                example = EXCLUDED.example,
-                summary = EXCLUDED.summary,
-                approach = EXCLUDED.approach,
-                time_complexity = EXCLUDED.time_complexity,
-                space_complexity = EXCLUDED.space_complexity,
+                pattern = COALESCE(EXCLUDED.pattern, placards.pattern),
+                description = COALESCE(EXCLUDED.description, placards.description),
+                example = COALESCE(EXCLUDED.example, placards.example),
+                summary = COALESCE(EXCLUDED.summary, placards.summary),
+                approach = COALESCE(EXCLUDED.approach, placards.approach),
+                time_complexity = COALESCE(EXCLUDED.time_complexity, placards.time_complexity),
+                space_complexity = COALESCE(EXCLUDED.space_complexity, placards.space_complexity),
                 code = EXCLUDED.code,
-                recognition_clues = EXCLUDED.recognition_clues,
-                core_insight = EXCLUDED.core_insight,
-                why_it_works = EXCLUDED.why_it_works,
-                complexity = EXCLUDED.complexity,
-                common_mistakes = EXCLUDED.common_mistakes,
-                transfer_question = EXCLUDED.transfer_question
+                recognition_clues = COALESCE(EXCLUDED.recognition_clues, placards.recognition_clues),
+                core_insight = COALESCE(EXCLUDED.core_insight, placards.core_insight),
+                why_it_works = COALESCE(EXCLUDED.why_it_works, placards.why_it_works),
+                complexity = COALESCE(EXCLUDED.complexity, placards.complexity),
+                common_mistakes = COALESCE(EXCLUDED.common_mistakes, placards.common_mistakes),
+                transfer_question = COALESCE(EXCLUDED.transfer_question, placards.transfer_question)
             RETURNING id
             """,
             user_id, problem_name, github_file_path,
@@ -373,7 +373,7 @@ async def clear_deck_for_user(user_id: UUID) -> None:
 
 
 async def get_incomplete_placards(user_id: UUID) -> list[dict]:
-    """Find cards that are missing a proper description or approach."""
+    """Find cards with missing, failed, or legacy malformed teaching content."""
     async with get_conn() as conn:
         rows = await conn.fetch(
             """
@@ -386,6 +386,9 @@ async def get_incomplete_placards(user_id: UUID) -> list[dict]:
                 OR approach LIKE 'Set a valid%'
                 OR approach LIKE 'Approach not available%'
                 OR approach = 'See code.'
+                OR approach LIKE '[%'
+                OR pattern IS NULL OR pattern = ''
+                OR core_insight IS NULL OR length(core_insight) < 20
               )
             ORDER BY created_at
             """,
@@ -564,10 +567,14 @@ async def list_placards(user_id: UUID) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def list_placards_full(user_id: UUID) -> list[dict]:
+async def list_placards_full(user_id: UUID, include_code: bool = False) -> list[dict]:
     async with get_conn() as conn:
+        select = _FULL_SELECT if include_code else _FULL_SELECT.replace(
+            "time_complexity, space_complexity, code, mastered, created_at,",
+            "time_complexity, space_complexity, NULL::TEXT AS code, mastered, created_at,",
+        )
         rows = await conn.fetch(
-            _FULL_SELECT + " WHERE user_id = $1 ORDER BY created_at DESC",
+            select + " WHERE user_id = $1 ORDER BY created_at DESC",
             user_id,
         )
         return [dict(r) for r in rows]

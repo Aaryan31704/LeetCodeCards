@@ -3,15 +3,15 @@
     "name": "LeetPlacards",
     "slug": "leetplacards",
     "scheme": "leetplacards",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f1f5f9"
+      "backgroundColor": "#050816"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -23,7 +23,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#f1f5f9"
+        "backgroundColor": "#050816"
       },
       "package": "com.leetplacards.app"
     },

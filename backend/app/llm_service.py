@@ -98,47 +98,102 @@ def _parse_json(text: str) -> Optional[dict]:
         return None
 
 
+def _clean_text(value: Any) -> str:
+    """Normalize model values without leaking Python list syntax into cards."""
+    if isinstance(value, list):
+        return " ".join(
+            str(item).strip().rstrip(".") + "."
+            for item in value
+            if str(item).strip()
+        ).strip()
+    return str(value or "").strip()
+
+
+def _number_steps(value: Any) -> str:
+    """Store an approach as numbered lines, accepting JSON arrays or text."""
+    if isinstance(value, list):
+        steps = [str(item).strip().lstrip("-• ").strip() for item in value if str(item).strip()]
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text.replace("'", '"'))
+                steps = [str(item).strip() for item in parsed if str(item).strip()]
+            except (json.JSONDecodeError, TypeError):
+                steps = [text]
+        else:
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            steps = [
+                re.sub(r"^(?:step\s*)?\d+[\).:\-]\s*", "", line, flags=re.I)
+                .lstrip("-• ")
+                .strip()
+                for line in lines
+            ]
+            if len(steps) == 1:
+                return steps[0]
+    return "\n".join(f"{index}. {step}" for index, step in enumerate(steps, 1))
+
+
+def _fallback_front_content(leetcode_content: str) -> dict[str, str]:
+    """Produce a complete, non-truncated fallback when front generation fails."""
+    text = re.sub(r"\s+", " ", leetcode_content or "").strip()
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    summary = " ".join(sentences[:4]).strip()
+    return {"description": f"Goal\n{summary}" if summary else "", "example": ""}
+
+
+def _normalize_front(parsed: Optional[dict], leetcode_content: str) -> dict[str, str]:
+    if not parsed:
+        return _fallback_front_content(leetcode_content)
+    labels = (
+        ("Goal", parsed.get("goal")),
+        ("Given", parsed.get("given")),
+        ("Return", parsed.get("return")),
+        ("Key rule", parsed.get("key_rule")),
+    )
+    sections = [f"{label}\n{_clean_text(value)}" for label, value in labels if _clean_text(value)]
+    description = "\n\n".join(sections) or _clean_text(parsed.get("description"))
+    if not description:
+        return _fallback_front_content(leetcode_content)
+    return {"description": description, "example": _clean_text(parsed.get("example"))}
+
+
 async def generate_front_content(
     problem_name: str, leetcode_content: str
 ) -> dict[str, str]:
-    """Generate the front-of-card content by condensing the LeetCode problem.
+    """Generate a predictable, one-read problem brief and example."""
+    prompt = f"""You are writing the front of an interview-study flashcard.
+Use direct, beginner-friendly language. Make the task understandable in one read.
 
-    Sends the full LeetCode problem description to the LLM and asks it to produce:
-    - A concise problem statement (keeping all constraints)
-    - One Input/Output example
-    """
-    prompt = f"""You are a LeetCode flashcard creator.
+Problem: {problem_name}
 
-Below is the full problem description from LeetCode:
-
+Official LeetCode description:
 ---
 {leetcode_content[:6000]}
 ---
 
-Rewrite this into a flashcard format. Return ONLY valid JSON with these keys:
+Return ONLY valid JSON with exactly these string keys:
+- "goal": one short sentence saying what must be achieved
+- "given": one short sentence describing the input
+- "return": one short sentence describing the expected output
+- "key_rule": only the constraint or edge case that changes how the solution works
+- "example": one example formatted as two lines beginning "Input:" and "Output:"
 
-- "description": Rewrite the problem description so it is concise but does NOT remove any important facts, constraints, or requirements. Keep it to 3-5 sentences. Include what the input is, what the output should be, and key constraints.
-
-- "example": Extract ONE clear example from the problem. Format it exactly like:
-Input: nums = [2,7,11,15], target = 9
-Output: [0,1]
-
-Just the input/output, nothing else.
-
+Do not explain an algorithm. Do not repeat information across fields.
 Return clean JSON only, no markdown."""
 
-    raw = await _call_groq(prompt, max_tokens=800)
-    if not raw:
-        return {"description": leetcode_content[:500], "example": ""}
-
-    parsed = _parse_json(raw)
-    if not parsed:
-        return {"description": leetcode_content[:500], "example": ""}
-
-    return {
-        "description": parsed.get("description") or leetcode_content[:500],
-        "example": parsed.get("example") or "",
-    }
+    for attempt in range(2):
+        suffix = "" if attempt == 0 else (
+            "\nYour previous response was invalid. Return every required key as plain text."
+        )
+        raw = await _call_groq(prompt + suffix, max_tokens=700)
+        parsed = _parse_json(raw) if raw else None
+        front = _normalize_front(parsed, leetcode_content)
+        if parsed and len(front["description"]) >= 40:
+            return front
+    return _fallback_front_content(leetcode_content)
 
 
 _BACK_FIELDS = (
@@ -213,10 +268,11 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
     """Keep teaching fields separate. `approach` is only the generic steps."""
     if not parsed:
         return _empty_back(fallback_msg)
-    back = {key: str(parsed.get(key) or "").strip() for key in _BACK_FIELDS}
+    back = {key: _clean_text(parsed.get(key)) for key in _BACK_FIELDS}
+    back["approach"] = _number_steps(parsed.get("approach"))
     if not back["approach"]:
         back["approach"] = fallback_msg
-    why = str(parsed.get("why_this_pattern") or back.get("core_insight") or "").strip()
+    why = _clean_text(parsed.get("why_this_pattern") or back.get("core_insight"))
     if why:
         back["core_insight"] = why
     pattern = back.get("pattern") or ""
@@ -226,10 +282,20 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
             re.escape(pattern), "this technique", clues, flags=re.I
         ).strip()
     time_c, space_c = _split_complexity(back["complexity"])
-    back["time_complexity"] = str(parsed.get("time_complexity") or "").strip() or time_c
-    back["space_complexity"] = str(parsed.get("space_complexity") or "").strip() or space_c
-    back["summary"] = str(parsed.get("solver_note") or parsed.get("summary") or "").strip()
+    back["time_complexity"] = _clean_text(parsed.get("time_complexity")) or time_c
+    back["space_complexity"] = _clean_text(parsed.get("space_complexity")) or space_c
+    back["summary"] = _clean_text(parsed.get("solver_note") or parsed.get("summary"))
     return back
+
+
+def _back_is_usable(back: dict[str, str]) -> bool:
+    approach = (back.get("approach") or "").strip()
+    return bool(
+        len((back.get("pattern") or "").strip()) >= 3
+        and len((back.get("core_insight") or "").strip()) >= 20
+        and len(approach) >= 30
+        and not approach.startswith(("Approach not available", "Set a valid"))
+    )
 
 
 async def generate_back_content(
@@ -274,7 +340,7 @@ Return ONLY valid JSON with these keys:
 
 - "why_this_pattern": Why THIS problem is that pattern. Talk about the problem shape (what the input looks like, what you must find or optimize), not about code. 2-3 sentences. Do not recap the full statement.
 
-- "approach": Generic step-by-step algorithm, 3-5 short steps. No variable names, no language syntax, no "the user's solution".
+- "approach": A JSON array of 3-5 short steps. Each step must state one concrete action and why it moves toward the answer. Use plain language. No language syntax and no "the user's solution".
 
 Hard rules:
 - Never mention identifiers, data-structure field names from the code, or "this implementation".
@@ -283,11 +349,17 @@ Hard rules:
 
 Return clean JSON only, no markdown."""
 
-    raw = await _call_groq(prompt, max_tokens=800)
     fallback = "Approach not available. Set a valid Groq API key and resync."
-    if not raw:
-        return _empty_back(fallback)
-    return _normalize_back(_parse_json(raw), fallback)
+    for attempt in range(2):
+        suffix = "" if attempt == 0 else (
+            "\nYour previous response was incomplete. Return all three keys; "
+            "approach must be a JSON array with at least 3 concrete steps."
+        )
+        raw = await _call_groq(prompt + suffix, max_tokens=900)
+        back = _normalize_back(_parse_json(raw) if raw else None, fallback)
+        if _back_is_usable(back):
+            return back
+    return _empty_back(fallback)
 
 
 async def generate_placard(
@@ -308,7 +380,7 @@ async def generate_placard(
     if leetcode_content and settings.GROQ_API_KEY:
         front = await generate_front_content(problem_name, leetcode_content)
     elif leetcode_content:
-        front = {"description": leetcode_content[:500], "example": ""}
+        front = _fallback_front_content(leetcode_content)
     else:
         front = {"description": "", "example": ""}
 
@@ -317,6 +389,7 @@ async def generate_placard(
         back = await generate_back_content(problem_name, leetcode_content, code)
     else:
         back = _empty_back(missing_key_msg)
+    usable_back = _back_is_usable(back)
 
     return {
         "problem_name": problem_name,
@@ -326,7 +399,9 @@ async def generate_placard(
         "pattern": back["pattern"],
         "recognition_clues": back.get("recognition_clues") or "",
         "core_insight": back.get("core_insight") or "",
-        "approach": back["approach"],
+        # Empty values become NULL at persistence time, preserving previously
+        # generated content via COALESCE instead of overwriting it with errors.
+        "approach": back["approach"] if usable_back else "",
         "why_it_works": back.get("why_it_works") or "",
         "complexity": back.get("complexity") or "",
         "common_mistakes": back.get("common_mistakes") or "",

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { C, fonts } from '../theme';
 
 export default function ScreenHeader({ title, subtitle, right, onBack }) {
@@ -7,7 +8,7 @@ export default function ScreenHeader({ title, subtitle, right, onBack }) {
     <View style={styles.wrap}>
       {onBack ? (
         <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={10} activeOpacity={0.7}>
-          <Text style={styles.backText}>Back</Text>
+          <Ionicons name="arrow-back" size={19} color={C.cyan} />
         </TouchableOpacity>
       ) : null}
       <View style={styles.titles}>
@@ -34,18 +35,26 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     gap: 12,
   },
-  backBtn: { paddingVertical: 4, paddingRight: 4 },
-  backText: { color: C.primary, fontFamily: fonts.semiBold, fontSize: 15 },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.cyanSoft,
+    borderWidth: 1,
+    borderColor: C.cyanBorder,
+  },
   titles: { flex: 1, minWidth: 0 },
   title: {
-    fontSize: 20,
+    fontSize: 21,
     fontFamily: fonts.bold,
-    color: C.dark,
+    color: C.text,
     letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 12,
-    color: C.light,
+    color: C.textMuted,
     marginTop: 2,
     fontFamily: fonts.medium,
   },

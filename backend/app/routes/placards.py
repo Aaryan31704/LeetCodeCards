@@ -14,12 +14,13 @@ router = APIRouter(prefix="/placards", tags=["placards"])
 @router.get("")
 async def get_placards(
     full: bool = Query(False, description="Return full placard data for flashcard deck"),
+    include_code: bool = Query(False, description="Include source code in full deck payload"),
     current_user: dict = Depends(get_current_user),
 ):
     """Return current user's placards."""
     user_id = current_user["id"]
     if full:
-        rows = await list_placards_full(user_id)
+        rows = await list_placards_full(user_id, include_code=include_code)
         return [PlacardResponse(**r) for r in rows]
     rows = await list_placards(user_id)
     return [PlacardListItem(**r) for r in rows]
