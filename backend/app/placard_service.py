@@ -211,6 +211,25 @@ async def seed_discovered_placards(
         )
 
 
+async def clear_invalid_path_prefix(
+    user_id: UUID, prefix: str, files_with_content: list[tuple[str, str]]
+) -> bool:
+    """Drop a stale prefix when discovery had to fall back to the repo root."""
+    normalized = prefix.strip().strip("/\\").lower()
+    if not normalized or not any(
+        not path.lower().startswith(normalized + "/")
+        for path, _ in files_with_content
+    ):
+        return False
+    async with get_conn() as conn:
+        await conn.execute(
+            "UPDATE users SET leetcode_path_prefix = '', updated_at = NOW() WHERE id = $1",
+            user_id,
+        )
+    logger.info("Cleared non-matching path prefix %r for user %s", prefix, user_id)
+    return True
+
+
 # ── Process a single placard ──
 
 async def _process_one(
@@ -294,6 +313,7 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
                 owner, repo, token=token, leetcode_path_prefix=prefix
             )
             if discovered:
+                await clear_invalid_path_prefix(user_id, prefix, discovered)
                 await seed_discovered_placards(user_id, discovered)
             progress = await get_resync_progress(user_id)
             if not is_resync_running(progress):
@@ -309,6 +329,7 @@ async def process_new_commits_for_user(user_id: UUID) -> int:
                 await set_last_processed_commit(user_id, latest)
             return 0
 
+    await clear_invalid_path_prefix(user_id, prefix, files_with_content)
     await seed_discovered_placards(user_id, files_with_content)
     total = len(files_with_content)
     logger.info("User %s: %d new file(s) to process", user_id, total)
@@ -481,6 +502,7 @@ async def full_resync_background(user_id: UUID) -> None:
             })
             return
 
+        await clear_invalid_path_prefix(user_id, prefix, files_with_content)
         await seed_discovered_placards(user_id, files_with_content)
         await _set_progress(user_id, {"status": "running", "total": total, "completed": 0, "current": ""})
 
