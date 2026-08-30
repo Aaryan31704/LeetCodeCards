@@ -47,7 +47,12 @@ def check(name, condition, detail=""):
 print("\n== Health & docs ==")
 with TestClient(app, raise_server_exceptions=False) as client:
     r = client.get("/health")
-    check("health returns ok", r.status_code == 200 and r.json() == {"status": "ok"})
+    check(
+        "health returns ok",
+        r.status_code == 200
+        and r.json().get("status") == "ok"
+        and r.json().get("version") == get_settings().API_VERSION,
+    )
     check("openapi schema builds", client.get("/openapi.json").status_code == 200)
 
     print("\n== Auth required ==")

@@ -48,7 +48,7 @@ class Settings:
 
     # API
     API_TITLE: str = "LeetPlacards API"
-    API_VERSION: str = "1.0.0"
+    API_VERSION: str = "1.0.1"
     # When true, error responses include exception details. Never enable in production.
     DEBUG: bool = _env_bool("DEBUG", False)
 
