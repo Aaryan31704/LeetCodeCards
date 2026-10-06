@@ -93,6 +93,18 @@ export function shuffle(arr) {
   return a;
 }
 
+/** Learn every problem, prioritizing submissions not yet marked mastered. */
+export function learnOrder(cards) {
+  const unmastered = shuffle(cards.filter((card) => !card.mastered));
+  const mastered = shuffle(cards.filter((card) => card.mastered));
+  return [...unmastered, ...mastered];
+}
+
+/** Review is deliberate recall of problems already understood once. */
+export function reviewOrder(cards) {
+  return shuffle(cards.filter((card) => card.mastered));
+}
+
 /** Prefer unmastered cards; mastereds appear much less often. */
 export function studyOrder(cards, { hideMastered = false } = {}) {
   const unmastered = cards.filter((c) => !c.mastered);

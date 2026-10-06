@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     access_token TEXT,
     repo_owner TEXT,
     repo_name TEXT,
-    leetcode_path_prefix TEXT DEFAULT 'LeetCode',
+    leetcode_path_prefix TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -43,6 +43,18 @@ CREATE TABLE IF NOT EXISTS placards (
     complexity TEXT DEFAULT '',
     common_mistakes TEXT DEFAULT '',
     transfer_question TEXT DEFAULT '',
+    user_approach TEXT DEFAULT '',
+    optimization_verdict TEXT DEFAULT '',
+    better_approach TEXT DEFAULT '',
+    user_time_complexity TEXT DEFAULT '',
+    user_space_complexity TEXT DEFAULT '',
+    better_time_complexity TEXT DEFAULT '',
+    better_space_complexity TEXT DEFAULT '',
+    plain_explanation TEXT DEFAULT '',
+    dry_run TEXT DEFAULT '',
+    naive_approach TEXT DEFAULT '',
+    invariant TEXT DEFAULT '',
+    pseudocode TEXT DEFAULT '',
     code TEXT,
     mastered BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -31,6 +31,8 @@ from app.llm_service import (
     _split_complexity,
     _compose_approach,
     _normalize_back,
+    _normalize_learn,
+    _learn_is_usable,
 )  # noqa: E402
 from app.leetcode_service import extract_slug_from_path  # noqa: E402
 
@@ -331,6 +333,39 @@ check("user approach is numbered", comparison["user_approach"].startswith("1. So
 check("better approach is numbered", comparison["better_approach"].startswith("1. Scan"))
 check("optimization verdict remains separate", comparison["optimization_verdict"].startswith("Good"))
 check("empty parse uses fallback", _normalize_back(None, "nope")["approach"] == "nope")
+
+print("\n== Guided lesson helpers ==")
+lesson = _normalize_learn({
+    "plain_explanation": (
+        "Find two positions whose values combine to make the target. "
+        "Each position may be used only once, and the positions are the answer."
+    ),
+    "dry_run": [
+        "Start with values [2, 7] and target 9.",
+        "At 2, the missing value is 7, so remember 2.",
+        "At 7, the missing value 2 has already been seen, so return both positions.",
+    ],
+    "naive_approach": (
+        "Try every pair and check its sum. This costs O(n²) time because "
+        "the same candidates are compared repeatedly."
+    ),
+    "invariant": "Every remembered value came from an earlier position and has not been reused.",
+    "pseudocode": [
+        "Create an empty value-to-position lookup.",
+        "For each value, check whether its complement is in the lookup.",
+        "Return both positions when found; otherwise remember the current value.",
+    ],
+})
+check("guided dry run is numbered", lesson["dry_run"].startswith("1. Start"))
+check("guided pseudocode is numbered", lesson["pseudocode"].startswith("1. Create"))
+check("complete guided lesson is usable", _learn_is_usable(lesson))
+check("short guided lesson is rejected", not _learn_is_usable(_normalize_learn({
+    "plain_explanation": "Too short",
+    "dry_run": ["One step"],
+    "naive_approach": "Guess.",
+    "invariant": "None.",
+    "pseudocode": ["Return."],
+})))
 
 print("\n== Stale resync detection ==")
 import time  # noqa: E402

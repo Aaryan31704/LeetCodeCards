@@ -31,6 +31,11 @@ class PlacardBase(BaseModel):
     user_space_complexity: Optional[str] = None
     better_time_complexity: Optional[str] = None
     better_space_complexity: Optional[str] = None
+    plain_explanation: Optional[str] = None
+    dry_run: Optional[str] = None
+    naive_approach: Optional[str] = None
+    invariant: Optional[str] = None
+    pseudocode: Optional[str] = None
     code: Optional[str] = None
     mastered: Optional[bool] = False
 

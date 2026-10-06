@@ -23,15 +23,17 @@ import {
 } from '../api';
 import { useAuth } from '../context/AuthContext';
 import FlipCard from '../components/FlipCard';
+import LearnLesson from '../components/LearnLesson';
+import StudyModeToggle from '../components/StudyModeToggle';
 import CodeModal from '../components/CodeModal';
 import Screen from '../components/Screen';
 import ScreenHeader from '../components/ScreenHeader';
 import AppButton from '../components/AppButton';
 import StatusView from '../components/StatusView';
 import MasteredButton from '../components/MasteredButton';
-import { C, fonts, studyOrder } from '../theme';
+import { C, fonts, learnOrder, reviewOrder } from '../theme';
 
-const HINT_KEY = '@leetplacards_gesture_hint_seen';
+const HINT_KEY = '@leetplacards_learn_review_hint_seen';
 
 function ResyncBanner({ progress }) {
   if (!progress || progress.status === 'idle' || progress.status === 'done') return null;
@@ -58,9 +60,9 @@ function GestureHint({ visible, onDismiss }) {
       <Pressable style={styles.hintOverlay} onPress={onDismiss}>
         <View style={styles.hintCard}>
           <Text style={styles.hintTitle}>How to study</Text>
-          <Text style={styles.hintLine}>Read the problem, then swipe right to flip.</Text>
-          <Text style={styles.hintLine}>The back names the pattern, why it fits, and the approach.</Text>
-          <Text style={styles.hintLine}>Scroll inside the card. Use the arrow controls for the next card.</Text>
+          <Text style={styles.hintLine}>Learn walks from a concrete example to your algorithm.</Text>
+          <Text style={styles.hintLine}>Mark a problem mastered when the reasoning makes sense.</Text>
+          <Text style={styles.hintLine}>Review then uses quick flip cards to test your recall.</Text>
           <AppButton title="Got it" onPress={onDismiss} style={{ marginTop: 16 }} />
         </View>
       </Pressable>
@@ -72,6 +74,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   const { logout } = useAuth();
   const [allCards, setAllCards] = useState([]);
   const [cards, setCards] = useState([]);
+  const [studyMode, setStudyMode] = useState('learn');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [idx, setIdx] = useState(0);
@@ -83,9 +86,10 @@ export default function FlashcardDeckScreen({ navigation }) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pollRef = useRef(null);
   const hasLoadedRef = useRef(false);
+  const modeRef = useRef('learn');
 
-  const rebuildDeck = useCallback((source) => {
-    setCards(studyOrder(source));
+  const rebuildDeck = useCallback((source, mode = modeRef.current) => {
+    setCards(mode === 'review' ? reviewOrder(source) : learnOrder(source));
     setIdx(0);
   }, []);
 
@@ -97,14 +101,22 @@ export default function FlashcardDeckScreen({ navigation }) {
       const data = await fetchPlacards(true, false);
       hasLoadedRef.current = true;
       setAllCards(data);
+      const eligible = modeRef.current === 'review'
+        ? data.filter((item) => item.mastered)
+        : data;
       setCards((previous) => {
-        if (firstLoad || previous.length === 0) return studyOrder(data);
+        if (firstLoad || previous.length === 0) {
+          return modeRef.current === 'review' ? reviewOrder(data) : learnOrder(data);
+        }
         const latest = new Map(data.map((item) => [item.id, item]));
-        const kept = previous.filter((item) => latest.has(item.id)).map((item) => latest.get(item.id));
+        const kept = previous
+          .filter((item) => latest.has(item.id))
+          .map((item) => latest.get(item.id))
+          .filter((item) => modeRef.current !== 'review' || item.mastered);
         const seen = new Set(kept.map((item) => item.id));
-        return [...kept, ...data.filter((item) => !seen.has(item.id))];
+        return [...kept, ...eligible.filter((item) => !seen.has(item.id))];
       });
-      setIdx((current) => Math.min(current, Math.max(data.length - 1, 0)));
+      setIdx((current) => Math.min(current, Math.max(eligible.length - 1, 0)));
     } catch (e) {
       setError(e.message || 'Failed to load');
     } finally {
@@ -225,16 +237,39 @@ export default function FlashcardDeckScreen({ navigation }) {
           ? Haptics.NotificationFeedbackType.Success
           : Haptics.NotificationFeedbackType.Warning
       ).catch(() => {});
-      setCards((p) => p.map((c, i) => (i === idx ? { ...c, mastered: res.mastered } : c)));
-      setAllCards((p) => p.map((c) => (c.id === card.id ? { ...c, mastered: res.mastered } : c)));
-    } catch (_) {}
+      const updatedAll = allCards.map((item) =>
+        item.id === card.id ? { ...item, mastered: res.mastered } : item
+      );
+      setAllCards(updatedAll);
+      if (studyMode === 'review' && !res.mastered) {
+        const remaining = cards.filter((item) => item.id !== card.id);
+        setCards(remaining);
+        setIdx((current) => Math.min(current, Math.max(remaining.length - 1, 0)));
+      } else {
+        setCards((previous) =>
+          previous.map((item) =>
+            item.id === card.id ? { ...item, mastered: res.mastered } : item
+          )
+        );
+      }
+    } catch (e) {
+      Alert.alert('Could not update progress', e.message || 'Please try again.');
+    }
   };
+
+  const handleModeChange = useCallback((mode) => {
+    if (mode === modeRef.current) return;
+    Haptics.selectionAsync().catch(() => {});
+    modeRef.current = mode;
+    setStudyMode(mode);
+    rebuildDeck(allCards, mode);
+  }, [allCards, rebuildDeck]);
 
   const handleResync = (force = false) => {
     const title = force ? 'Full Resync' : 'Smart Resync';
     const msg = force
       ? 'Re-fetch ALL problems from LeetCode and re-analyze all code. Runs in the background.'
-      : 'Only re-process cards missing descriptions or approaches.';
+      : 'Only re-process cards missing explanations, worked examples, or approaches.';
     Alert.alert(title, msg, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -332,7 +367,7 @@ export default function FlashcardDeckScreen({ navigation }) {
 
   const isResyncing = resyncProgress && resyncProgress.status === 'running';
 
-  if (!card) {
+  if (!card && allCards.length === 0) {
     return (
       <Screen>
         <ScreenHeader title="Study" subtitle="0 cards" right={headerRight} />
@@ -352,6 +387,26 @@ export default function FlashcardDeckScreen({ navigation }) {
     );
   }
 
+  if (!card) {
+    return (
+      <Screen bottomInset>
+        <ScreenHeader
+          title={studyMode === 'review' ? 'Review' : 'Learn'}
+          subtitle={`${masteredCount} OF ${allCards.length} MASTERED`}
+          right={headerRight}
+        />
+        <StudyModeToggle value={studyMode} onChange={handleModeChange} />
+        <ResyncBanner progress={resyncProgress} />
+        <StatusView
+          title="Nothing to review yet"
+          message="Learn a problem first, then mark it mastered. It will appear here for quick recall."
+          actionLabel="Go to Learn"
+          onAction={() => handleModeChange('learn')}
+        />
+      </Screen>
+    );
+  }
+
   const progress = total > 0 ? (idx + 1) / total : 0;
 
   return (
@@ -365,10 +420,12 @@ export default function FlashcardDeckScreen({ navigation }) {
       />
 
       <ScreenHeader
-        title="Neural Deck"
-        subtitle={`NODE ${String(idx + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}  ·  ${masteredCount} MASTERED`}
+        title={studyMode === 'learn' ? 'Learn' : 'Review'}
+        subtitle={`PROBLEM ${idx + 1} OF ${total}  ·  ${masteredCount} MASTERED`}
         right={headerRight}
       />
+
+      <StudyModeToggle value={studyMode} onChange={handleModeChange} />
 
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
@@ -379,10 +436,11 @@ export default function FlashcardDeckScreen({ navigation }) {
       <Animated.View
         style={[styles.deck, { transform: [{ translateY: slideAnim }] }]}
       >
-        <FlipCard
-          card={card}
-          onShowCode={handleShowCode}
-        />
+        {studyMode === 'learn' ? (
+          <LearnLesson card={card} onShowCode={handleShowCode} />
+        ) : (
+          <FlipCard card={card} onShowCode={handleShowCode} />
+        )}
       </Animated.View>
 
       <View style={styles.controls}>
@@ -407,7 +465,7 @@ export default function FlashcardDeckScreen({ navigation }) {
         <View style={styles.actRow}>
           <TouchableOpacity
             style={styles.actBtn}
-            onPress={() => rebuildDeck(allCards)}
+            onPress={() => rebuildDeck(allCards, studyMode)}
           >
             <Ionicons name="shuffle" size={15} color={C.cyan} />
             <Text style={styles.actLabel}>Shuffle</Text>

@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     access_token TEXT,
     repo_owner TEXT,
     repo_name TEXT,
-    leetcode_path_prefix TEXT DEFAULT 'LeetCode',
+    leetcode_path_prefix TEXT DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS placards (
     user_space_complexity TEXT DEFAULT '',
     better_time_complexity TEXT DEFAULT '',
     better_space_complexity TEXT DEFAULT '',
+    plain_explanation TEXT DEFAULT '',
+    dry_run TEXT DEFAULT '',
+    naive_approach TEXT DEFAULT '',
+    invariant TEXT DEFAULT '',
+    pseudocode TEXT DEFAULT '',
     code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -153,6 +158,29 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'better_space_complexity') THEN
         ALTER TABLE placards ADD COLUMN better_space_complexity TEXT DEFAULT '';
+    END IF;
+END $$;
+"""
+
+# v6 migration: guided first-time learning content
+MIGRATE_PLACARDS_V6_SQL = """
+DO $$
+BEGIN
+    ALTER TABLE users ALTER COLUMN leetcode_path_prefix SET DEFAULT '';
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'plain_explanation') THEN
+        ALTER TABLE placards ADD COLUMN plain_explanation TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'dry_run') THEN
+        ALTER TABLE placards ADD COLUMN dry_run TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'naive_approach') THEN
+        ALTER TABLE placards ADD COLUMN naive_approach TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'invariant') THEN
+        ALTER TABLE placards ADD COLUMN invariant TEXT DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'pseudocode') THEN
+        ALTER TABLE placards ADD COLUMN pseudocode TEXT DEFAULT '';
     END IF;
 END $$;
 """

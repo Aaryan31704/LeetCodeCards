@@ -144,6 +144,11 @@ async def upsert_placard(
     user_space_complexity: str = "",
     better_time_complexity: str = "",
     better_space_complexity: str = "",
+    plain_explanation: str = "",
+    dry_run: str = "",
+    naive_approach: str = "",
+    invariant: str = "",
+    pseudocode: str = "",
 ) -> UUID:
     async with get_conn() as conn:
         row = await conn.fetchrow(
@@ -156,11 +161,12 @@ async def upsert_placard(
                 complexity, common_mistakes, transfer_question,
                 user_approach, optimization_verdict, better_approach,
                 user_time_complexity, user_space_complexity,
-                better_time_complexity, better_space_complexity
+                better_time_complexity, better_space_complexity,
+                plain_explanation, dry_run, naive_approach, invariant, pseudocode
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
                 $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
-                $23, $24, $25
+                $23, $24, $25, $26, $27, $28, $29, $30
             )
             ON CONFLICT (user_id, github_file_path)
             DO UPDATE SET
@@ -186,7 +192,12 @@ async def upsert_placard(
                 user_time_complexity = COALESCE(EXCLUDED.user_time_complexity, placards.user_time_complexity),
                 user_space_complexity = COALESCE(EXCLUDED.user_space_complexity, placards.user_space_complexity),
                 better_time_complexity = COALESCE(EXCLUDED.better_time_complexity, placards.better_time_complexity),
-                better_space_complexity = COALESCE(EXCLUDED.better_space_complexity, placards.better_space_complexity)
+                better_space_complexity = COALESCE(EXCLUDED.better_space_complexity, placards.better_space_complexity),
+                plain_explanation = COALESCE(EXCLUDED.plain_explanation, placards.plain_explanation),
+                dry_run = COALESCE(EXCLUDED.dry_run, placards.dry_run),
+                naive_approach = COALESCE(EXCLUDED.naive_approach, placards.naive_approach),
+                invariant = COALESCE(EXCLUDED.invariant, placards.invariant),
+                pseudocode = COALESCE(EXCLUDED.pseudocode, placards.pseudocode)
             RETURNING id
             """,
             user_id, problem_name, github_file_path,
@@ -198,6 +209,8 @@ async def upsert_placard(
             user_approach or None, optimization_verdict or None, better_approach or None,
             user_time_complexity or None, user_space_complexity or None,
             better_time_complexity or None, better_space_complexity or None,
+            plain_explanation or None, dry_run or None, naive_approach or None,
+            invariant or None, pseudocode or None,
         )
         return row["id"]
 
@@ -304,6 +317,11 @@ async def _process_one(
         user_space_complexity=placard.get("user_space_complexity") or "",
         better_time_complexity=placard.get("better_time_complexity") or "",
         better_space_complexity=placard.get("better_space_complexity") or "",
+        plain_explanation=placard.get("plain_explanation") or "",
+        dry_run=placard.get("dry_run") or "",
+        naive_approach=placard.get("naive_approach") or "",
+        invariant=placard.get("invariant") or "",
+        pseudocode=placard.get("pseudocode") or "",
     )
     return True
 
@@ -419,6 +437,11 @@ async def get_incomplete_placards(user_id: UUID) -> list[dict]:
                 OR core_insight IS NULL OR length(core_insight) < 20
                 OR user_approach IS NULL OR length(user_approach) < 30
                 OR optimization_verdict IS NULL OR optimization_verdict = ''
+                OR plain_explanation IS NULL OR length(plain_explanation) < 60
+                OR dry_run IS NULL OR length(dry_run) < 60
+                OR naive_approach IS NULL OR length(naive_approach) < 40
+                OR invariant IS NULL OR length(invariant) < 20
+                OR pseudocode IS NULL OR length(pseudocode) < 30
               )
             ORDER BY created_at
             """,
@@ -585,7 +608,8 @@ _FULL_SELECT = """
            complexity, common_mistakes, transfer_question,
            user_approach, optimization_verdict, better_approach,
            user_time_complexity, user_space_complexity,
-           better_time_complexity, better_space_complexity
+           better_time_complexity, better_space_complexity,
+           plain_explanation, dry_run, naive_approach, invariant, pseudocode
     FROM placards
 """
 

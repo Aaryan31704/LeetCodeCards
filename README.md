@@ -1,6 +1,6 @@
 # LeetPlacards
 
-Mobile-first flashcard app that **automatically** turns your LeetCode solutions into revision cards. Log in with GitHub, connect your repo, and every push creates or updates placards—no worker to run.
+Mobile-first study app that **automatically** turns your LeetCode solutions into guided lessons and revision cards. Log in with GitHub, connect your repo, and every push creates or updates the learning material—no worker to run.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ User pushes solutions (e.g. via LeetHub) → GitHub sends push event to backend
     ↓
 Backend fetches new/changed files → LLM (Groq/Llama) → placard stored per user
     ↓
-Expo app shows user's placards (list + flashcard view)
+Expo app provides Learn lessons and Review flashcards
 ```
 
 - **No background worker:** Placards are created when GitHub sends a webhook on push, or when the user triggers a sync (e.g. pull-to-refresh).
@@ -25,8 +25,8 @@ Expo app shows user's placards (list + flashcard view)
 
 - **Backend:** Python, FastAPI, asyncpg, JWT, GitHub OAuth & webhooks
 - **Database:** Supabase (PostgreSQL)
-- **LLM:** Groq API (Llama 3) for summary/approach from code
-- **Mobile:** Expo (React Native) with auth, connect-repo, and flashcard UI
+- **LLM:** Groq API for problem explanations, code analysis, worked examples, and approach comparison
+- **Mobile:** Expo (React Native) with auth, repository connection, guided Learn mode, and flashcard Review mode
 
 ---
 
@@ -136,7 +136,8 @@ npx expo start
    - `mobile/src/config.js` reads `EXPO_PUBLIC_API_URL` first, then `app.json -> expo.extra.apiUrl`.
 2. **Login:** Tap “Login with GitHub”. You’ll be sent to GitHub to authorize; after redirect, the app stores the token.
 3. **Connect repo:** Enter the repo owner and name where you push LeetCode solutions (e.g. from LeetHub). The backend will create a webhook and run an initial sync so existing solutions become placards.
-4. **Placards:** List and tap a card for flashcard view (front: problem + pattern; back: summary, approach, complexity). Pull to refresh to sync new pushes. Log out from the list header.
+4. **Learn:** Work through the plain-English task, dry run, key observation, your submitted approach, optimal comparison, and pseudocode.
+5. **Review:** Mark understood problems mastered, then use the Review toggle for quick recall flashcards.
 
 Deep link scheme is `leetplacards` so that after GitHub OAuth the backend can redirect to the app with the token.
 
@@ -158,7 +159,8 @@ npx eas build --platform ios --profile preview
 
 1. **LeetHub (optional):** Install [LeetHub](https://github.com/QasimWani/LeetHub) and connect your GitHub repo. Submitting a solution on LeetCode pushes the file to the repo (e.g. `LeetCode/123-two-sum.py`).
 2. **App:** Log in with GitHub, connect that repo. Existing files are synced once; new pushes create placards via webhook (or use pull-to-refresh to sync).
-3. **Flashcards:** Open a placard to see front (problem name, pattern) and back (summary, approach, time/space). View code in the modal.
+3. **Learn:** Use the guided lesson to connect a concrete trace to your submitted and recommended approaches.
+4. **Review:** Mark understood problems mastered and recall the pattern, insight, approach, and complexity with flip cards.
 
 ---
 

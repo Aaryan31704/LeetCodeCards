@@ -127,15 +127,10 @@ const CardFront = memo(function CardFront({ card }) {
 
 const CardBack = memo(function CardBack({ card, onShowCode }) {
   const why = card.core_insight || card.recognition_clues || card.why_it_works || '';
-  const userSteps = useMemo(() => approachSteps(card.user_approach), [card.user_approach]);
-  const betterSteps = useMemo(() => approachSteps(card.better_approach), [card.better_approach]);
-  const recommendedSteps = useMemo(
-    () => betterSteps.length ? betterSteps : approachSteps(card.approach),
-    [betterSteps, card.approach]
-  );
-  const isOptimal = (card.optimization_verdict || '').startsWith('Already optimal');
-  const userComplexity = [card.user_time_complexity, card.user_space_complexity].filter(Boolean);
-  const betterComplexity = [card.better_time_complexity, card.better_space_complexity].filter(Boolean);
+  const recommended = card.better_approach || card.approach;
+  const steps = useMemo(() => approachSteps(recommended), [recommended]);
+  const time = card.better_time_complexity || card.time_complexity || card.user_time_complexity;
+  const space = card.better_space_complexity || card.space_complexity || card.user_space_complexity;
 
   return (
     <View style={styles.inner}>
@@ -149,42 +144,6 @@ const CardBack = memo(function CardBack({ card, onShowCode }) {
         showsVerticalScrollIndicator
         nestedScrollEnabled
       >
-        <View style={styles.userApproachCard}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="person-outline" size={16} color={C.violet} />
-            <Text style={styles.insightLabel}>YOUR APPROACH</Text>
-          </View>
-          {userSteps.length ? (
-            userSteps.map((step, index) => (
-              <View style={styles.stepRow} key={`user-${index}-${step.slice(0, 20)}`}>
-                <View style={styles.userStepNumber}>
-                  <Text style={styles.userStepNumberText}>{index + 1}</Text>
-                </View>
-                <Text style={styles.stepText}>{step}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.placeholder}>Your code analysis is queued. Tap Resync on the deck.</Text>
-          )}
-          {userComplexity.length ? (
-            <Text style={styles.complexityText}>
-              Time {card.user_time_complexity || '—'}  ·  Space {card.user_space_complexity || '—'}
-            </Text>
-          ) : null}
-          {card.optimization_verdict ? (
-            <View style={[styles.verdictChip, isOptimal ? styles.verdictOptimal : styles.verdictImprove]}>
-              <Ionicons
-                name={isOptimal ? 'checkmark-circle-outline' : 'sparkles-outline'}
-                size={15}
-                color={isOptimal ? C.success : C.medium}
-              />
-              <Text style={[styles.verdictText, { color: isOptimal ? C.success : C.medium }]}>
-                {card.optimization_verdict}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
         {hasText(why) ? (
           <View style={styles.insightCard}>
             <View style={styles.sectionTitleRow}>
@@ -197,13 +156,11 @@ const CardBack = memo(function CardBack({ card, onShowCode }) {
 
         <View style={styles.approachCard}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name={betterSteps.length ? 'trending-up-outline' : 'git-network-outline'} size={16} color={C.cyan} />
-            <Text style={styles.stepsLabel}>
-              {betterSteps.length ? 'BETTER APPROACH' : 'RECOMMENDED APPROACH'}
-            </Text>
+            <Ionicons name="git-network-outline" size={16} color={C.cyan} />
+            <Text style={styles.stepsLabel}>RECALL THE APPROACH</Text>
           </View>
-          {recommendedSteps.length ? (
-            recommendedSteps.map((step, index) => (
+          {steps.length ? (
+            steps.map((step, index) => (
               <View style={styles.stepRow} key={`${index}-${step.slice(0, 20)}`}>
                 <View style={styles.stepNumber}>
                   <Text style={styles.stepNumberText}>{index + 1}</Text>
@@ -214,9 +171,9 @@ const CardBack = memo(function CardBack({ card, onShowCode }) {
           ) : (
             <Text style={styles.placeholder}>Approach is queued for generation. Tap Resync on the deck.</Text>
           )}
-          {betterComplexity.length ? (
+          {(time || space) ? (
             <Text style={styles.complexityText}>
-              Time {card.better_time_complexity || '—'}  ·  Space {card.better_space_complexity || '—'}
+              Time {time || '—'}  ·  Space {space || '—'}
             </Text>
           ) : null}
         </View>
@@ -401,7 +358,6 @@ const styles = StyleSheet.create({
   revealKicker: { color: C.violet, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 2.2, marginBottom: 5 },
   patternTitle: { color: C.text, fontFamily: fonts.bold, fontSize: 27, textAlign: 'center', letterSpacing: -0.6 },
   backBody: { paddingBottom: 18 },
-  userApproachCard: { backgroundColor: C.violetSoft, borderRadius: radius.lg, borderWidth: 1, borderColor: C.violetBorder, padding: 14, marginBottom: 12 },
   insightCard: { backgroundColor: C.violetSoft, borderRadius: radius.lg, borderWidth: 1, borderColor: C.violetBorder, padding: 14, marginBottom: 12 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 9 },
   insightLabel: { color: C.violet, fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1.4 },
@@ -411,14 +367,8 @@ const styles = StyleSheet.create({
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 11 },
   stepNumber: { width: 23, height: 23, borderRadius: 7, backgroundColor: C.cyanSoft, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   stepNumberText: { color: C.cyan, fontFamily: fonts.bold, fontSize: 11 },
-  userStepNumber: { width: 23, height: 23, borderRadius: 7, backgroundColor: C.violetSoft, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  userStepNumberText: { color: C.violet, fontFamily: fonts.bold, fontSize: 11 },
   stepText: { flex: 1, color: C.textSecondary, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21 },
   complexityText: { color: C.textMuted, fontFamily: 'monospace', fontSize: 11, marginTop: 3 },
-  verdictChip: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, marginTop: 10 },
-  verdictOptimal: { backgroundColor: C.successSoft, borderColor: C.success },
-  verdictImprove: { backgroundColor: C.mediumBg, borderColor: C.medium },
-  verdictText: { flex: 1, fontFamily: fonts.medium, fontSize: 12, lineHeight: 17 },
   backFooter: { paddingTop: 8 },
   codeButton: { height: 39, borderRadius: radius.md, borderWidth: 1, borderColor: C.cyanBorder, backgroundColor: C.cyanSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   codeButtonText: { color: C.cyan, fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.2 },

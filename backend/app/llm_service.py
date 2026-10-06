@@ -1,9 +1,10 @@
 """LLM service using Groq API to generate flashcard content.
 
-Two distinct generation paths:
+Three distinct generation paths:
 1. Front card: condense real LeetCode problem description + extract example
 2. Back card: explain the submitted strategy, compare it with the textbook
    approach, and suggest a better solution only when one truly exists.
+3. Learn lesson: build intuition with a concrete trace and pseudocode.
 """
 
 import asyncio
@@ -395,6 +396,98 @@ Return clean JSON only, no markdown."""
     return _empty_back(fallback)
 
 
+_LEARN_FIELDS = (
+    "plain_explanation",
+    "dry_run",
+    "naive_approach",
+    "invariant",
+    "pseudocode",
+)
+
+
+def _empty_learn() -> dict[str, str]:
+    return {key: "" for key in _LEARN_FIELDS}
+
+
+def _normalize_learn(parsed: Optional[dict]) -> dict[str, str]:
+    """Normalize guided-lesson fields into predictable display text."""
+    if not parsed:
+        return _empty_learn()
+    learn = {key: _clean_text(parsed.get(key)) for key in _LEARN_FIELDS}
+    learn["dry_run"] = _number_steps(parsed.get("dry_run"))
+    learn["pseudocode"] = _number_steps(parsed.get("pseudocode"))
+    return learn
+
+
+def _learn_is_usable(learn: dict[str, str]) -> bool:
+    """Reject incomplete lessons so smart resync can safely retry them."""
+    values = [learn.get(key, "") or "" for key in _LEARN_FIELDS]
+    return bool(
+        len(values[0].strip()) >= 60
+        and len(values[1].strip()) >= 60
+        and values[1].count("\n") >= 2
+        and len(values[2].strip()) >= 40
+        and len(values[3].strip()) >= 20
+        and len(values[4].strip()) >= 30
+        and values[4].count("\n") >= 2
+        and not any("```" in value for value in values)
+    )
+
+
+async def generate_learn_content(
+    problem_name: str,
+    leetcode_content: Optional[str],
+    code: str,
+) -> dict[str, str]:
+    """Generate a first-time lesson that bridges the statement and algorithm."""
+    statement = (leetcode_content or "").strip() or (
+        f"No official statement is available. Infer the well-known LeetCode problem "
+        f"named '{problem_name}' and avoid inventing constraints."
+    )
+    prompt = f"""You are a patient algorithms tutor creating a guided lesson.
+Your reader has seen the problem but does not yet understand how to solve it.
+Build the missing bridge from the concrete example to the algorithm.
+
+Problem: {problem_name}
+
+Official statement:
+---
+{statement[:5000]}
+---
+
+Submitted solution:
+```
+{(code or "")[:4000]}
+```
+
+Return ONLY valid JSON with exactly these keys:
+- "plain_explanation": 2-4 beginner-friendly sentences explaining the task using everyday language. Define any technical term. Do not explain the solution yet.
+- "dry_run": a JSON array of 3-7 short steps tracing the smallest useful concrete example from input to output. Show changing values or choices at each step.
+- "naive_approach": 2-3 sentences describing the most natural brute-force idea, its Big-O cost, and precisely why it does unnecessary work.
+- "invariant": one plain sentence describing what remains true after every iteration or recursive call in the recommended algorithm.
+- "pseudocode": a JSON array of 3-8 language-independent operations for the recommended algorithm. No programming-language syntax and no identifiers copied from the submitted code.
+
+Hard rules:
+- Use the actual problem and submitted solution; do not give generic algorithm advice.
+- Prefer one tiny concrete example over abstract wording.
+- Make every dry-run step causally explain the next decision.
+- Do not use markdown or code fences inside values.
+- Do not repeat the same explanation across fields.
+
+Return clean JSON only, no markdown."""
+
+    for attempt in range(2):
+        suffix = "" if attempt == 0 else (
+            "\nThe previous lesson was incomplete. Return every key with a concrete "
+            "worked trace and language-independent pseudocode."
+        )
+        raw = await _call_groq(prompt + suffix, max_tokens=1500)
+        learn = _normalize_learn(_parse_json(raw) if raw else None)
+        if _learn_is_usable(learn):
+            return learn
+    return _empty_learn()
+
+
 async def generate_placard(
     problem_name: str,
     code: str,
@@ -420,9 +513,13 @@ async def generate_placard(
     if settings.GROQ_API_KEY:
         await asyncio.sleep(1)
         back = await generate_back_content(problem_name, leetcode_content, code)
+        await asyncio.sleep(1)
+        learn = await generate_learn_content(problem_name, leetcode_content, code)
     else:
         back = _empty_back(missing_key_msg)
+        learn = _empty_learn()
     usable_back = _back_is_usable(back)
+    usable_learn = _learn_is_usable(learn)
 
     return {
         "problem_name": problem_name,
@@ -446,6 +543,11 @@ async def generate_placard(
         "user_space_complexity": back.get("user_space_complexity") or "",
         "better_time_complexity": back.get("better_time_complexity") or "",
         "better_space_complexity": back.get("better_space_complexity") or "",
+        "plain_explanation": learn["plain_explanation"] if usable_learn else "",
+        "dry_run": learn["dry_run"] if usable_learn else "",
+        "naive_approach": learn["naive_approach"] if usable_learn else "",
+        "invariant": learn["invariant"] if usable_learn else "",
+        "pseudocode": learn["pseudocode"] if usable_learn else "",
         "time_complexity": back["time_complexity"],
         "space_complexity": back["space_complexity"],
         "summary": back.get("summary") or "",
