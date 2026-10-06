@@ -1,5 +1,6 @@
 """LeetPlacards API entrypoint."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -31,34 +32,79 @@ logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
 
 
+SCHEMA_RETRY_START_SECONDS = 30
+SCHEMA_RETRY_MAX_SECONDS = 300
+
+
+async def apply_schema() -> bool:
+    """Create tables and run migrations. False when the database is unreachable."""
+    pool = await init_db()
+    if not pool:
+        return False
+    async with pool.acquire() as conn:
+        await conn.execute(CREATE_USERS_SQL)
+        await conn.execute(CREATE_WORKER_STATE_SQL)
+        # Migrate existing placards table: add user_id if missing (old schema)
+        await conn.execute(ALTER_PLACARDS_ADD_USER_SQL)
+        await conn.execute(CREATE_PLACARDS_SQL)
+        # Drop old unique index, ensure new (user_id, github_file_path) index exists
+        await conn.execute(MIGRATE_PLACARDS_INDEX_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V2_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V3_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V4_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V5_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V6_SQL)
+    return True
+
+
+async def _retry_schema_until_ready() -> None:
+    """Keep migrating until the database answers.
+
+    Connections are re-established lazily per request, so without this a server
+    that booted while the database was paused would serve queries against a
+    schema that never received its migrations.
+    """
+    delay = SCHEMA_RETRY_START_SECONDS
+    while True:
+        await asyncio.sleep(delay)
+        try:
+            if await apply_schema():
+                logger.info("Database ready (recovered after startup failure)")
+                return
+        except Exception as e:
+            logger.warning("Schema retry failed: %s", e)
+        delay = min(delay * 2, SCHEMA_RETRY_MAX_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize DB and run migrations on startup."""
     for warning in settings.config_warnings():
         logger.warning("Config: %s", warning)
 
+    ready = False
     try:
-        pool = await init_db()
-        if pool:
-            async with pool.acquire() as conn:
-                await conn.execute(CREATE_USERS_SQL)
-                await conn.execute(CREATE_WORKER_STATE_SQL)
-                # Migrate existing placards table: add user_id if missing (old schema)
-                await conn.execute(ALTER_PLACARDS_ADD_USER_SQL)
-                await conn.execute(CREATE_PLACARDS_SQL)
-                # Drop old unique index, ensure new (user_id, github_file_path) index exists
-                await conn.execute(MIGRATE_PLACARDS_INDEX_SQL)
-                await conn.execute(MIGRATE_PLACARDS_V2_SQL)
-                await conn.execute(MIGRATE_PLACARDS_V3_SQL)
-                await conn.execute(MIGRATE_PLACARDS_V4_SQL)
-                await conn.execute(MIGRATE_PLACARDS_V5_SQL)
-                await conn.execute(MIGRATE_PLACARDS_V6_SQL)
+        ready = await apply_schema()
+        if ready:
             logger.info("Database ready")
     except Exception as e:
         logger.warning(
             "Database connection failed at startup: %s. Check DATABASE_URL and network.", e
         )
+
+    retry_task = None
+    if not ready:
+        logger.warning("Retrying database setup in the background until it succeeds")
+        retry_task = asyncio.create_task(_retry_schema_until_ready())
+
     yield
+
+    if retry_task:
+        retry_task.cancel()
+        try:
+            await retry_task
+        except asyncio.CancelledError:
+            pass
     await close_db()
 
 

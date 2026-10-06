@@ -367,6 +367,48 @@ check("short guided lesson is rejected", not _learn_is_usable(_normalize_learn({
     "pseudocode": ["Return."],
 })))
 
+print("\n== Database recovery ==")
+import asyncio  # noqa: E402
+
+from app import main as app_main  # noqa: E402
+
+
+async def _probe_schema_retry() -> int:
+    """A paused database must be migrated once it answers again."""
+    attempts = {"count": 0}
+
+    async def flaky_schema() -> bool:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("database paused")
+        return attempts["count"] > 2
+
+    original = (
+        app_main.apply_schema,
+        app_main.SCHEMA_RETRY_START_SECONDS,
+        app_main.SCHEMA_RETRY_MAX_SECONDS,
+    )
+    app_main.apply_schema = flaky_schema
+    app_main.SCHEMA_RETRY_START_SECONDS = 0
+    app_main.SCHEMA_RETRY_MAX_SECONDS = 0
+    try:
+        await asyncio.wait_for(app_main._retry_schema_until_ready(), timeout=5)
+    finally:
+        (
+            app_main.apply_schema,
+            app_main.SCHEMA_RETRY_START_SECONDS,
+            app_main.SCHEMA_RETRY_MAX_SECONDS,
+        ) = original
+    return attempts["count"]
+
+
+retry_attempts = asyncio.run(_probe_schema_retry())
+check(
+    "schema retry survives errors and a dead pool, then migrates",
+    retry_attempts == 3,
+    f"attempts={retry_attempts}",
+)
+
 print("\n== Stale resync detection ==")
 import time  # noqa: E402
 
