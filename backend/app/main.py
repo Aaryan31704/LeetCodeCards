@@ -21,6 +21,7 @@ from app.models import (
     MIGRATE_PLACARDS_V4_SQL,
     MIGRATE_PLACARDS_V5_SQL,
     MIGRATE_PLACARDS_V6_SQL,
+    MIGRATE_PLACARDS_V7_SQL,
 )
 from app.routes.auth import router as auth_router
 from app.routes.placards import router as placards_router
@@ -54,6 +55,7 @@ async def apply_schema() -> bool:
         await conn.execute(MIGRATE_PLACARDS_V4_SQL)
         await conn.execute(MIGRATE_PLACARDS_V5_SQL)
         await conn.execute(MIGRATE_PLACARDS_V6_SQL)
+        await conn.execute(MIGRATE_PLACARDS_V7_SQL)
     return True
 
 

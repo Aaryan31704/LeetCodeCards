@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS placards (
     naive_approach TEXT DEFAULT '',
     invariant TEXT DEFAULT '',
     pseudocode TEXT DEFAULT '',
+    statement TEXT DEFAULT '',
     code TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -181,6 +182,16 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'pseudocode') THEN
         ALTER TABLE placards ADD COLUMN pseudocode TEXT DEFAULT '';
+    END IF;
+END $$;
+"""
+
+# v7 migration: keep the authoritative LeetCode statement instead of paraphrasing it
+MIGRATE_PLACARDS_V7_SQL = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'placards' AND column_name = 'statement') THEN
+        ALTER TABLE placards ADD COLUMN statement TEXT DEFAULT '';
     END IF;
 END $$;
 """

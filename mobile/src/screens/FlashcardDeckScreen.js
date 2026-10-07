@@ -53,6 +53,33 @@ function ResyncBanner({ progress }) {
   );
 }
 
+// Deck maintenance lives behind a menu: it is rarely needed, and a row of
+// buttons under every problem made the screen read as a dashboard.
+function ActionMenu({ visible, onClose, items }) {
+  return (
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
+      <Pressable style={styles.menuOverlay} onPress={onClose}>
+        <View style={styles.menuSheet}>
+          {items.map((item) => (
+            <TouchableOpacity
+              key={item.label}
+              style={[styles.menuItem, item.disabled && styles.dim]}
+              disabled={item.disabled}
+              onPress={() => {
+                onClose();
+                item.onPress();
+              }}
+            >
+              <Ionicons name={item.icon} size={17} color={item.danger ? C.textSecondary : C.cyan} />
+              <Text style={styles.menuLabel}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function GestureHint({ visible, onDismiss }) {
   if (!visible) return null;
   return (
@@ -83,6 +110,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   const [codeLoading, setCodeLoading] = useState(false);
   const [resyncProgress, setResyncProgress] = useState(null);
   const [showHint, setShowHint] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pollRef = useRef(null);
   const hasLoadedRef = useRef(false);
@@ -317,35 +345,60 @@ export default function FlashcardDeckScreen({ navigation }) {
     }
   };
 
+  const isResyncing = resyncProgress && resyncProgress.status === 'running';
+
+  const handleLogout = () => {
+    Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setAuthToken(null);
+          await logout();
+        },
+      },
+    ]);
+  };
+
+  const menuItems = [
+    {
+      label: 'Shuffle deck',
+      icon: 'shuffle',
+      onPress: () => rebuildDeck(allCards, studyMode),
+    },
+    {
+      label: isResyncing ? 'Syncing…' : 'Sync missing content',
+      icon: 'refresh',
+      disabled: isResyncing,
+      onPress: () => handleResync(false),
+    },
+    {
+      label: 'Rebuild every card with AI',
+      icon: 'sparkles-outline',
+      disabled: isResyncing,
+      onPress: () => handleResync(true),
+    },
+    {
+      label: 'Connected repository',
+      icon: 'git-branch-outline',
+      onPress: () => navigation.navigate('ConnectRepo'),
+    },
+    { label: 'Log out', icon: 'log-out-outline', danger: true, onPress: handleLogout },
+  ];
+
   const headerRight = (
-    <View style={styles.headerActions}>
-      <TouchableOpacity
-        style={styles.headerIcon}
-        onPress={() => navigation.navigate('ConnectRepo')}
-        hitSlop={8}
-      >
-        <Ionicons name="git-branch-outline" size={17} color={C.cyan} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.headerIcon}
-        onPress={() => {
-          Alert.alert('Log out', 'You can then sign in with a different GitHub account.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Log out',
-              style: 'destructive',
-              onPress: async () => {
-                setAuthToken(null);
-                await logout();
-              },
-            },
-          ]);
-        }}
-        hitSlop={8}
-      >
-        <Ionicons name="log-out-outline" size={17} color={C.textSecondary} />
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity style={styles.headerIcon} onPress={() => setMenuVisible(true)} hitSlop={8}>
+      <Ionicons name="ellipsis-horizontal" size={18} color={C.textSecondary} />
+    </TouchableOpacity>
+  );
+
+  const actionMenu = (
+    <ActionMenu
+      visible={menuVisible}
+      onClose={() => setMenuVisible(false)}
+      items={menuItems}
+    />
   );
 
   if (loading) {
@@ -365,11 +418,10 @@ export default function FlashcardDeckScreen({ navigation }) {
     );
   }
 
-  const isResyncing = resyncProgress && resyncProgress.status === 'running';
-
   if (!card && allCards.length === 0) {
     return (
       <Screen>
+        {actionMenu}
         <ScreenHeader title="Study" subtitle="0 cards" right={headerRight} />
         <ResyncBanner progress={resyncProgress} />
         <StatusView
@@ -390,9 +442,10 @@ export default function FlashcardDeckScreen({ navigation }) {
   if (!card) {
     return (
       <Screen bottomInset>
+        {actionMenu}
         <ScreenHeader
           title={studyMode === 'review' ? 'Review' : 'Learn'}
-          subtitle={`${masteredCount} OF ${allCards.length} MASTERED`}
+          subtitle={`${masteredCount} of ${allCards.length} mastered`}
           right={headerRight}
         />
         <StudyModeToggle value={studyMode} onChange={handleModeChange} />
@@ -412,6 +465,7 @@ export default function FlashcardDeckScreen({ navigation }) {
   return (
     <Screen bottomInset>
       <GestureHint visible={showHint} onDismiss={dismissHint} />
+      {actionMenu}
       <CodeModal
         visible={codeVisible}
         code={modalCode}
@@ -421,7 +475,7 @@ export default function FlashcardDeckScreen({ navigation }) {
 
       <ScreenHeader
         title={studyMode === 'learn' ? 'Learn' : 'Review'}
-        subtitle={`PROBLEM ${idx + 1} OF ${total}  ·  ${masteredCount} MASTERED`}
+        subtitle={`${masteredCount} of ${allCards.length} mastered`}
         right={headerRight}
       />
 
@@ -461,32 +515,6 @@ export default function FlashcardDeckScreen({ navigation }) {
             <Ionicons name="chevron-forward" size={19} color={C.textSecondary} />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.actRow}>
-          <TouchableOpacity
-            style={styles.actBtn}
-            onPress={() => rebuildDeck(allCards, studyMode)}
-          >
-            <Ionicons name="shuffle" size={15} color={C.cyan} />
-            <Text style={styles.actLabel}>Shuffle</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actBtn, isResyncing && { opacity: 0.5 }]}
-            onPress={() => handleResync(false)}
-            disabled={isResyncing}
-          >
-            <Ionicons name="refresh" size={15} color={C.cyan} />
-            <Text style={styles.actLabel}>{isResyncing ? 'Syncing...' : 'Resync'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actBtn, isResyncing && { opacity: 0.5 }]}
-            onPress={() => handleResync(true)}
-            disabled={isResyncing}
-          >
-            <Ionicons name="sparkles-outline" size={15} color={C.violet} />
-            <Text style={[styles.actLabel, { color: C.violet }]}>Rebuild AI</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </Screen>
   );
@@ -494,7 +522,6 @@ export default function FlashcardDeckScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   masteredWrap: { flex: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerIcon: {
     width: 34,
     height: 34,
@@ -564,7 +591,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
   },
   navBtn: {
     paddingVertical: 11,
@@ -574,26 +600,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.glassBorder,
   },
-  dim: { opacity: 0.3 },
-  actRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 6,
-    flexWrap: 'wrap',
+  dim: { opacity: 0.35 },
+
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5,8,22,0.6)',
+    justifyContent: 'flex-end',
+    padding: 14,
   },
-  actBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 11,
-    borderRadius: 10,
-    backgroundColor: C.surfaceDeep,
+  menuSheet: {
+    backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.glassBorder,
+    borderRadius: 18,
+    paddingVertical: 6,
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 13,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
   },
-  actLabel: { color: C.cyan, fontFamily: fonts.semiBold, fontSize: 11 },
+  menuLabel: { color: C.text, fontFamily: fonts.medium, fontSize: 15 },
 
   hintOverlay: {
     flex: 1,

@@ -69,7 +69,13 @@ function approachSteps(value) {
 }
 
 const CardFront = memo(function CardFront({ card }) {
-  const sections = useMemo(() => problemSections(card.description), [card.description]);
+  // Review is recall, not reading: the one-line task plus a sample is enough
+  // of a cue. The full statement belongs in Learn.
+  const prompt = (card.plain_explanation || '').trim();
+  const sections = useMemo(
+    () => (prompt ? [] : problemSections(card.description)),
+    [prompt, card.description]
+  );
   const hasExample = hasText(card.example);
 
   return (
@@ -92,7 +98,9 @@ const CardFront = memo(function CardFront({ card }) {
         showsVerticalScrollIndicator
         nestedScrollEnabled
       >
-        {hasText(card.description) ? (
+        {prompt ? (
+          <Text style={styles.desc}>{prompt}</Text>
+        ) : sections.length ? (
           sections.map((section, index) => (
             <View style={styles.briefRow} key={`${section.label}-${index}`}>
               <View style={styles.briefIndex}>
@@ -126,11 +134,11 @@ const CardFront = memo(function CardFront({ card }) {
 });
 
 const CardBack = memo(function CardBack({ card, onShowCode }) {
-  const why = card.core_insight || card.recognition_clues || card.why_it_works || '';
+  const why = card.core_insight || '';
   const recommended = card.better_approach || card.approach;
   const steps = useMemo(() => approachSteps(recommended), [recommended]);
-  const time = card.better_time_complexity || card.time_complexity || card.user_time_complexity;
-  const space = card.better_space_complexity || card.space_complexity || card.user_space_complexity;
+  const time = card.better_time_complexity || card.user_time_complexity;
+  const space = card.better_space_complexity || card.user_space_complexity;
 
   return (
     <View style={styles.inner}>

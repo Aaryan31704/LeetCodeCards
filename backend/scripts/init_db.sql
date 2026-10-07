@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS placards (
     naive_approach TEXT DEFAULT '',
     invariant TEXT DEFAULT '',
     pseudocode TEXT DEFAULT '',
+    statement TEXT DEFAULT '',
     code TEXT,
     mastered BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

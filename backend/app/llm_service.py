@@ -137,75 +137,31 @@ def _number_steps(value: Any) -> str:
     return "\n".join(f"{index}. {step}" for index, step in enumerate(steps, 1))
 
 
-def _fallback_front_content(leetcode_content: str) -> dict[str, str]:
-    """Produce a complete, non-truncated fallback when front generation fails."""
-    text = re.sub(r"\s+", " ", leetcode_content or "").strip()
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    summary = " ".join(sentences[:4]).strip()
-    return {"description": f"Goal\n{summary}" if summary else "", "example": ""}
+_EXAMPLE_BLOCK = re.compile(
+    r"Example\s*1?\s*:?\s*\n(.+?)(?=\n\s*Example\s*\d|\n\s*Constraints|\Z)",
+    re.S | re.I,
+)
+_EXAMPLE_LINE = re.compile(r"^(Input|Output|Explanation)\b", re.I)
 
 
-def _normalize_front(parsed: Optional[dict], leetcode_content: str) -> dict[str, str]:
-    if not parsed:
-        return _fallback_front_content(leetcode_content)
-    labels = (
-        ("Goal", parsed.get("goal")),
-        ("Given", parsed.get("given")),
-        ("Return", parsed.get("return")),
-        ("Key rule", parsed.get("key_rule")),
-    )
-    sections = [f"{label}\n{_clean_text(value)}" for label, value in labels if _clean_text(value)]
-    description = "\n\n".join(sections) or _clean_text(parsed.get("description"))
-    if not description:
-        return _fallback_front_content(leetcode_content)
-    return {"description": description, "example": _clean_text(parsed.get("example"))}
+def extract_example(statement: str) -> str:
+    """Take the first worked example verbatim from the official statement.
 
-
-async def generate_front_content(
-    problem_name: str, leetcode_content: str
-) -> dict[str, str]:
-    """Generate a predictable, one-read problem brief and example."""
-    prompt = f"""You are writing the front of an interview-study flashcard.
-Use direct, beginner-friendly language. Make the task understandable in one read.
-
-Problem: {problem_name}
-
-Official LeetCode description:
----
-{leetcode_content[:6000]}
----
-
-Return ONLY valid JSON with exactly these string keys:
-- "goal": one short sentence saying what must be achieved
-- "given": one short sentence describing the input
-- "return": one short sentence describing the expected output
-- "key_rule": only the constraint or edge case that changes how the solution works
-- "example": one example formatted as two lines beginning "Input:" and "Output:"
-
-Do not explain an algorithm. Do not repeat information across fields.
-Return clean JSON only, no markdown."""
-
-    for attempt in range(2):
-        suffix = "" if attempt == 0 else (
-            "\nYour previous response was invalid. Return every required key as plain text."
-        )
-        raw = await _call_groq(prompt + suffix, max_tokens=700)
-        parsed = _parse_json(raw) if raw else None
-        front = _normalize_front(parsed, leetcode_content)
-        if parsed and len(front["description"]) >= 40:
-            return front
-    return _fallback_front_content(leetcode_content)
+    Reading it out of the real text keeps the exact values and formatting,
+    which a paraphrase tended to round off or invent.
+    """
+    match = _EXAMPLE_BLOCK.search(statement or "")
+    if not match:
+        return ""
+    lines = [line.strip() for line in match.group(1).splitlines() if line.strip()]
+    kept = [line for line in lines if _EXAMPLE_LINE.match(line)]
+    return "\n".join(kept[:3])
 
 
 _BACK_FIELDS = (
     "pattern",
-    "recognition_clues",
     "core_insight",
     "approach",
-    "why_it_works",
-    "complexity",
-    "common_mistakes",
-    "transfer_question",
     "user_approach",
     "optimization_verdict",
     "better_approach",
@@ -215,68 +171,10 @@ _BACK_FIELDS = (
     "better_space_complexity",
 )
 
-_BIG_O = re.compile(r"O\([^)]+\)")
-
-
 def _empty_back(approach_msg: str) -> dict[str, str]:
-    return {
-        "pattern": "",
-        "recognition_clues": "",
-        "core_insight": "",
-        "approach": approach_msg,
-        "why_it_works": "",
-        "complexity": "",
-        "common_mistakes": "",
-        "transfer_question": "",
-        "user_approach": "",
-        "optimization_verdict": "",
-        "better_approach": "",
-        "user_time_complexity": "",
-        "user_space_complexity": "",
-        "better_time_complexity": "",
-        "better_space_complexity": "",
-        "time_complexity": "",
-        "space_complexity": "",
-        "summary": "",
-    }
-
-
-def _split_complexity(text: str) -> tuple[str, str]:
-    """Pull short Big-O badges out of a free-form complexity explanation."""
-    text = text or ""
-    time_m = re.search(r"time[^O]{0,24}(O\([^)]+\))", text, re.I)
-    space_m = re.search(r"space[^O]{0,24}(O\([^)]+\))", text, re.I)
-    found = _BIG_O.findall(text)
-    time_c = time_m.group(1) if time_m else (found[0] if found else "")
-    space_c = space_m.group(1) if space_m else (found[1] if len(found) > 1 else "")
-    return time_c, space_c
-
-
-def _compose_approach(back: dict) -> str:
-    """Flatten structured fields into one blob. Used only by tests / fallbacks."""
-    chunks = []
-    insight = (back.get("core_insight") or "").strip()
-    steps = (back.get("approach") or "").strip()
-    why = (back.get("why_it_works") or "").strip()
-    clues = (back.get("recognition_clues") or "").strip()
-    mistakes = (back.get("common_mistakes") or "").strip()
-    transfer = (back.get("transfer_question") or "").strip()
-    complexity = (back.get("complexity") or "").strip()
-    if insight:
-        chunks.append(insight)
-    if steps:
-        chunks.append(steps)
-    if why:
-        chunks.append(f"Why it works: {why}")
-    if clues:
-        chunks.append(f"Recognize this when: {clues}")
-    if complexity:
-        chunks.append(complexity)
-    if mistakes:
-        chunks.append(f"Common mistakes: {mistakes}")
-    if transfer:
-        chunks.append(f"Transfer: {transfer}")
-    return "\n\n".join(chunks)
+    back = {field: "" for field in _BACK_FIELDS}
+    back["approach"] = approach_msg
+    return back
 
 
 def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]:
@@ -296,16 +194,6 @@ def _normalize_back(parsed: Optional[dict], fallback_msg: str) -> dict[str, str]
     why = _clean_text(parsed.get("why_this_pattern") or back.get("core_insight"))
     if why:
         back["core_insight"] = why
-    pattern = back.get("pattern") or ""
-    clues = back.get("recognition_clues") or ""
-    if pattern and clues:
-        back["recognition_clues"] = re.sub(
-            re.escape(pattern), "this technique", clues, flags=re.I
-        ).strip()
-    time_c, space_c = _split_complexity(back["complexity"])
-    back["time_complexity"] = _clean_text(parsed.get("time_complexity")) or time_c
-    back["space_complexity"] = _clean_text(parsed.get("space_complexity")) or space_c
-    back["summary"] = _clean_text(parsed.get("solver_note") or parsed.get("summary"))
     return back
 
 
@@ -420,17 +308,18 @@ def _normalize_learn(parsed: Optional[dict]) -> dict[str, str]:
 
 
 def _learn_is_usable(learn: dict[str, str]) -> bool:
-    """Reject incomplete lessons so smart resync can safely retry them."""
-    values = [learn.get(key, "") or "" for key in _LEARN_FIELDS]
+    """Require the two fields a lesson cannot teach without.
+
+    The extras are optional on purpose: gating on all five made one weak
+    sentence discard an otherwise good lesson.
+    """
+    explanation = (learn.get("plain_explanation") or "").strip()
+    trace = (learn.get("dry_run") or "").strip()
     return bool(
-        len(values[0].strip()) >= 60
-        and len(values[1].strip()) >= 60
-        and values[1].count("\n") >= 2
-        and len(values[2].strip()) >= 40
-        and len(values[3].strip()) >= 20
-        and len(values[4].strip()) >= 30
-        and values[4].count("\n") >= 2
-        and not any("```" in value for value in values)
+        len(explanation) >= 20
+        and len(trace) >= 40
+        and trace.count("\n") >= 2
+        and not any("```" in (value or "") for value in learn.values())
     )
 
 
@@ -461,7 +350,7 @@ Submitted solution:
 ```
 
 Return ONLY valid JSON with exactly these keys:
-- "plain_explanation": 2-4 beginner-friendly sentences explaining the task using everyday language. Define any technical term. Do not explain the solution yet.
+- "plain_explanation": ONE short sentence restating the task in everyday language. The learner can already read the official statement, so do not repeat its details, constraints, or examples. Do not explain the solution.
 - "dry_run": a JSON array of 3-7 short steps tracing the smallest useful concrete example from input to output. Show changing values or choices at each step.
 - "naive_approach": 2-3 sentences describing the most natural brute-force idea, its Big-O cost, and precisely why it does unnecessary work.
 - "invariant": one plain sentence describing what remains true after every iteration or recursive call in the recommended algorithm.
@@ -497,18 +386,13 @@ async def generate_placard(
 ) -> dict[str, Any]:
     """Orchestrate both LLM calls to produce a complete flashcard.
 
-    Front card comes from the LeetCode statement. Back card explains and
-    evaluates the submitted code before teaching the recommended approach.
+    The problem itself is never generated: the official statement is stored as
+    written and its first example is lifted out of it. The model is only asked
+    to teach the problem and to evaluate the submitted code.
     """
     settings = get_settings()
     missing_key_msg = "Set a valid Groq API key and resync to generate approach."
-
-    if leetcode_content and settings.GROQ_API_KEY:
-        front = await generate_front_content(problem_name, leetcode_content)
-    elif leetcode_content:
-        front = _fallback_front_content(leetcode_content)
-    else:
-        front = {"description": "", "example": ""}
+    statement = (leetcode_content or "").strip()
 
     if settings.GROQ_API_KEY:
         await asyncio.sleep(1)
@@ -524,18 +408,15 @@ async def generate_placard(
     return {
         "problem_name": problem_name,
         "difficulty": leetcode_difficulty or "Medium",
-        "description": front["description"],
-        "example": front["example"],
+        # The official wording is the specification. Keep it verbatim so the
+        # exact constraints survive instead of being paraphrased away.
+        "statement": statement,
+        "example": extract_example(statement),
         "pattern": back["pattern"],
-        "recognition_clues": back.get("recognition_clues") or "",
         "core_insight": back.get("core_insight") or "",
         # Empty values become NULL at persistence time, preserving previously
         # generated content via COALESCE instead of overwriting it with errors.
         "approach": back["approach"] if usable_back else "",
-        "why_it_works": back.get("why_it_works") or "",
-        "complexity": back.get("complexity") or "",
-        "common_mistakes": back.get("common_mistakes") or "",
-        "transfer_question": back.get("transfer_question") or "",
         "user_approach": back.get("user_approach") or "",
         "optimization_verdict": back.get("optimization_verdict") or "",
         "better_approach": back.get("better_approach") or "",
@@ -548,9 +429,6 @@ async def generate_placard(
         "naive_approach": learn["naive_approach"] if usable_learn else "",
         "invariant": learn["invariant"] if usable_learn else "",
         "pseudocode": learn["pseudocode"] if usable_learn else "",
-        "time_complexity": back["time_complexity"],
-        "space_complexity": back["space_complexity"],
-        "summary": back.get("summary") or "",
         "code": code,
         "github_file_path": github_file_path,
     }

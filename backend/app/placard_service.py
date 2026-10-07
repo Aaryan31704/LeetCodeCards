@@ -118,100 +118,70 @@ async def set_last_processed_commit(user_id: UUID, sha: str) -> None:
 
 # ── Upsert ──
 
+# Everything a placard carries beyond its identity. One list drives the insert,
+# the conflict update, and the read query so the three cannot drift apart.
+CONTENT_FIELDS = (
+    "statement",
+    "description",
+    "example",
+    "plain_explanation",
+    "dry_run",
+    "naive_approach",
+    "invariant",
+    "pseudocode",
+    "pattern",
+    "core_insight",
+    "approach",
+    "better_approach",
+    "user_approach",
+    "optimization_verdict",
+    "user_time_complexity",
+    "user_space_complexity",
+    "better_time_complexity",
+    "better_space_complexity",
+)
+
+_UPSERT_COLUMNS = ("user_id", "problem_name", "github_file_path", "difficulty", "code", *CONTENT_FIELDS)
+
+_UPSERT_SQL = """
+    INSERT INTO placards ({columns})
+    VALUES ({placeholders})
+    ON CONFLICT (user_id, github_file_path)
+    DO UPDATE SET
+        problem_name = EXCLUDED.problem_name,
+        difficulty = EXCLUDED.difficulty,
+        code = EXCLUDED.code,
+        {updates}
+    RETURNING id
+""".format(
+    columns=", ".join(_UPSERT_COLUMNS),
+    placeholders=", ".join(f"${i}" for i in range(1, len(_UPSERT_COLUMNS) + 1)),
+    # A failed generation sends NULL, so COALESCE keeps the last good text
+    # rather than blanking a card that was already complete.
+    updates=",\n        ".join(
+        f"{field} = COALESCE(EXCLUDED.{field}, placards.{field})" for field in CONTENT_FIELDS
+    ),
+)
+
+
 async def upsert_placard(
     user_id: UUID,
     problem_name: str,
     github_file_path: str,
     difficulty: str,
-    pattern: str,
-    description: str,
-    example: str,
-    summary: str,
-    approach: str,
-    time_complexity: str,
-    space_complexity: str,
     code: str,
-    recognition_clues: str = "",
-    core_insight: str = "",
-    why_it_works: str = "",
-    complexity: str = "",
-    common_mistakes: str = "",
-    transfer_question: str = "",
-    user_approach: str = "",
-    optimization_verdict: str = "",
-    better_approach: str = "",
-    user_time_complexity: str = "",
-    user_space_complexity: str = "",
-    better_time_complexity: str = "",
-    better_space_complexity: str = "",
-    plain_explanation: str = "",
-    dry_run: str = "",
-    naive_approach: str = "",
-    invariant: str = "",
-    pseudocode: str = "",
+    content: dict,
 ) -> UUID:
+    values = [
+        user_id,
+        problem_name,
+        github_file_path,
+        difficulty or "Medium",
+        code or None,
+        *((content.get(field) or None) for field in CONTENT_FIELDS),
+    ]
     async with get_conn() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO placards (
-                user_id, problem_name, github_file_path, difficulty, pattern,
-                description, example, summary, approach,
-                time_complexity, space_complexity, code,
-                recognition_clues, core_insight, why_it_works,
-                complexity, common_mistakes, transfer_question,
-                user_approach, optimization_verdict, better_approach,
-                user_time_complexity, user_space_complexity,
-                better_time_complexity, better_space_complexity,
-                plain_explanation, dry_run, naive_approach, invariant, pseudocode
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
-                $23, $24, $25, $26, $27, $28, $29, $30
-            )
-            ON CONFLICT (user_id, github_file_path)
-            DO UPDATE SET
-                problem_name = EXCLUDED.problem_name,
-                difficulty = EXCLUDED.difficulty,
-                pattern = COALESCE(EXCLUDED.pattern, placards.pattern),
-                description = COALESCE(EXCLUDED.description, placards.description),
-                example = COALESCE(EXCLUDED.example, placards.example),
-                summary = COALESCE(EXCLUDED.summary, placards.summary),
-                approach = COALESCE(EXCLUDED.approach, placards.approach),
-                time_complexity = COALESCE(EXCLUDED.time_complexity, placards.time_complexity),
-                space_complexity = COALESCE(EXCLUDED.space_complexity, placards.space_complexity),
-                code = EXCLUDED.code,
-                recognition_clues = COALESCE(EXCLUDED.recognition_clues, placards.recognition_clues),
-                core_insight = COALESCE(EXCLUDED.core_insight, placards.core_insight),
-                why_it_works = COALESCE(EXCLUDED.why_it_works, placards.why_it_works),
-                complexity = COALESCE(EXCLUDED.complexity, placards.complexity),
-                common_mistakes = COALESCE(EXCLUDED.common_mistakes, placards.common_mistakes),
-                transfer_question = COALESCE(EXCLUDED.transfer_question, placards.transfer_question),
-                user_approach = COALESCE(EXCLUDED.user_approach, placards.user_approach),
-                optimization_verdict = COALESCE(EXCLUDED.optimization_verdict, placards.optimization_verdict),
-                better_approach = COALESCE(EXCLUDED.better_approach, placards.better_approach),
-                user_time_complexity = COALESCE(EXCLUDED.user_time_complexity, placards.user_time_complexity),
-                user_space_complexity = COALESCE(EXCLUDED.user_space_complexity, placards.user_space_complexity),
-                better_time_complexity = COALESCE(EXCLUDED.better_time_complexity, placards.better_time_complexity),
-                better_space_complexity = COALESCE(EXCLUDED.better_space_complexity, placards.better_space_complexity),
-                plain_explanation = COALESCE(EXCLUDED.plain_explanation, placards.plain_explanation),
-                dry_run = COALESCE(EXCLUDED.dry_run, placards.dry_run),
-                naive_approach = COALESCE(EXCLUDED.naive_approach, placards.naive_approach),
-                invariant = COALESCE(EXCLUDED.invariant, placards.invariant),
-                pseudocode = COALESCE(EXCLUDED.pseudocode, placards.pseudocode)
-            RETURNING id
-            """,
-            user_id, problem_name, github_file_path,
-            difficulty or "Medium", pattern or None, description or None,
-            example or None, summary or None, approach or None,
-            time_complexity or None, space_complexity or None, code or None,
-            recognition_clues or None, core_insight or None, why_it_works or None,
-            complexity or None, common_mistakes or None, transfer_question or None,
-            user_approach or None, optimization_verdict or None, better_approach or None,
-            user_time_complexity or None, user_space_complexity or None,
-            better_time_complexity or None, better_space_complexity or None,
-            plain_explanation or None, dry_run or None, naive_approach or None,
-            invariant or None, pseudocode or None,
-        )
+        row = await conn.fetchrow(_UPSERT_SQL, *values)
         return row["id"]
 
 
@@ -296,32 +266,8 @@ async def _process_one(
         problem_name=placard["problem_name"],
         github_file_path=placard["github_file_path"],
         difficulty=placard.get("difficulty") or "Medium",
-        pattern=placard.get("pattern") or "",
-        description=placard.get("description") or "",
-        example=placard.get("example") or "",
-        summary=placard.get("summary") or "",
-        approach=placard.get("approach") or "",
-        time_complexity=placard.get("time_complexity") or "",
-        space_complexity=placard.get("space_complexity") or "",
         code=placard.get("code") or "",
-        recognition_clues=placard.get("recognition_clues") or "",
-        core_insight=placard.get("core_insight") or "",
-        why_it_works=placard.get("why_it_works") or "",
-        complexity=placard.get("complexity") or "",
-        common_mistakes=placard.get("common_mistakes") or "",
-        transfer_question=placard.get("transfer_question") or "",
-        user_approach=placard.get("user_approach") or "",
-        optimization_verdict=placard.get("optimization_verdict") or "",
-        better_approach=placard.get("better_approach") or "",
-        user_time_complexity=placard.get("user_time_complexity") or "",
-        user_space_complexity=placard.get("user_space_complexity") or "",
-        better_time_complexity=placard.get("better_time_complexity") or "",
-        better_space_complexity=placard.get("better_space_complexity") or "",
-        plain_explanation=placard.get("plain_explanation") or "",
-        dry_run=placard.get("dry_run") or "",
-        naive_approach=placard.get("naive_approach") or "",
-        invariant=placard.get("invariant") or "",
-        pseudocode=placard.get("pseudocode") or "",
+        content=placard,
     )
     return True
 
@@ -419,7 +365,15 @@ async def clear_deck_for_user(user_id: UUID) -> None:
 
 
 async def get_incomplete_placards(user_id: UUID) -> list[dict]:
-    """Find cards with missing, failed, or legacy malformed teaching content."""
+    """Find cards with missing, failed, or legacy malformed teaching content.
+
+    Only content a lesson cannot work without is listed. The optional extras
+    (naive approach, invariant, pseudocode) are deliberately absent: a problem
+    the model declines to expand on would otherwise be re-queued on every
+    resync forever. The statement and its example are excluded for the same
+    reason, since a file whose LeetCode slug cannot be resolved will never gain
+    one; such cards fall back to the plain explanation, which is checked here.
+    """
     async with get_conn() as conn:
         rows = await conn.fetch(
             """
@@ -427,21 +381,17 @@ async def get_incomplete_placards(user_id: UUID) -> list[dict]:
             FROM placards
             WHERE user_id = $1
               AND (
-                description IS NULL OR description = '' OR length(description) < 15
-                OR approach IS NULL OR approach = '' OR length(approach) < 15
+                length(COALESCE(approach, '')) < 15
                 OR approach LIKE 'Set a valid%'
                 OR approach LIKE 'Approach not available%'
                 OR approach = 'See code.'
                 OR approach LIKE '[%'
-                OR pattern IS NULL OR pattern = ''
-                OR core_insight IS NULL OR length(core_insight) < 20
-                OR user_approach IS NULL OR length(user_approach) < 30
-                OR optimization_verdict IS NULL OR optimization_verdict = ''
-                OR plain_explanation IS NULL OR length(plain_explanation) < 60
-                OR dry_run IS NULL OR length(dry_run) < 60
-                OR naive_approach IS NULL OR length(naive_approach) < 40
-                OR invariant IS NULL OR length(invariant) < 20
-                OR pseudocode IS NULL OR length(pseudocode) < 30
+                OR COALESCE(pattern, '') = ''
+                OR length(COALESCE(core_insight, '')) < 20
+                OR length(COALESCE(user_approach, '')) < 30
+                OR COALESCE(optimization_verdict, '') = ''
+                OR length(COALESCE(plain_explanation, '')) < 20
+                OR length(COALESCE(dry_run, '')) < 40
               )
             ORDER BY created_at
             """,
@@ -600,18 +550,14 @@ async def full_resync_background(user_id: UUID) -> None:
 
 # ── Query helpers ──
 
-_FULL_SELECT = """
-    SELECT id, problem_name, github_file_path, difficulty, pattern,
-           description, example, summary, approach,
-           time_complexity, space_complexity, code, mastered, created_at,
-           recognition_clues, core_insight, why_it_works,
-           complexity, common_mistakes, transfer_question,
-           user_approach, optimization_verdict, better_approach,
-           user_time_complexity, user_space_complexity,
-           better_time_complexity, better_space_complexity,
-           plain_explanation, dry_run, naive_approach, invariant, pseudocode
-    FROM placards
-"""
+def _full_select(include_code: bool) -> str:
+    """Read every content field. Source code is heavy, so it is opt-in."""
+    code = "code" if include_code else "NULL::TEXT AS code"
+    columns = ", ".join(
+        ("id", "problem_name", "github_file_path", "difficulty", "mastered", "created_at",
+         code, *CONTENT_FIELDS)
+    )
+    return f"SELECT {columns} FROM placards"
 
 
 async def list_placards(user_id: UUID) -> list[dict]:
@@ -626,12 +572,8 @@ async def list_placards(user_id: UUID) -> list[dict]:
 
 async def list_placards_full(user_id: UUID, include_code: bool = False) -> list[dict]:
     async with get_conn() as conn:
-        select = _FULL_SELECT if include_code else _FULL_SELECT.replace(
-            "time_complexity, space_complexity, code, mastered, created_at,",
-            "time_complexity, space_complexity, NULL::TEXT AS code, mastered, created_at,",
-        )
         rows = await conn.fetch(
-            select + " WHERE user_id = $1 ORDER BY created_at DESC",
+            _full_select(include_code) + " WHERE user_id = $1 ORDER BY created_at DESC",
             user_id,
         )
         return [dict(r) for r in rows]
@@ -640,7 +582,7 @@ async def list_placards_full(user_id: UUID, include_code: bool = False) -> list[
 async def get_placard_by_id(placard_id: UUID, user_id: UUID) -> Optional[dict]:
     async with get_conn() as conn:
         row = await conn.fetchrow(
-            _FULL_SELECT + " WHERE id = $1 AND user_id = $2",
+            _full_select(include_code=True) + " WHERE id = $1 AND user_id = $2",
             placard_id, user_id,
         )
         return dict(row) if row else None
